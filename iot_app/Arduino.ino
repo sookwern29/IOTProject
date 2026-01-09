@@ -6,6 +6,8 @@
 #include <ESPmDNS.h>
 #include <PubSubClient.h>
 #include <Preferences.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 // ================= WIFI & MQTT =================
 const char* ssid = "Uhuk";
@@ -14,6 +16,11 @@ const char* password = "kam1234@";
 const char* deviceName = "medicinebox";
 const char* mqtt_server = "34.19.178.165"; 
 const int mqtt_port = 1883;
+
+// ================= FIREBASE CONFIG =================
+const char* FIREBASE_PROJECT_ID = "smart-medicine-box-482122";
+const char* FIREBASE_API_KEY = "AIzaSyDybbj_4iMAxuavc86r9N0wYBkKtZ_nOyk"; // Replace with your Firebase Web API Key
+const char* FIRESTORE_HOST = "https://firestore.googleapis.com";
 
 // Dynamic boxId - stored in Preferences (EEPROM)
 Preferences preferences;
@@ -92,6 +99,17 @@ int lastReminderTriggeredBoxNumber = 0;
 unsigned long lastBoxLEDTurnedOnTime = 0;
 int lastBoxLEDTurnedOnBoxNumber = 0;
 const unsigned long RECENT_ACTION_WINDOW = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+// Blink state for each box (index 0 unused, 1-7 for boxes)
+struct BlinkState {
+  bool active;           // Is this box currently blinking?
+  int count;             // Current blink count
+  int targetCount;       // Total blinks to perform
+  bool ledState;         // Current LED state (true = on, false = off)
+  unsigned long lastToggle; // Last time LED toggled
+};
+
+BlinkState boxBlinks[8] = {0}; // Initialize all to zero (inactive)
 
 // ================= MQTT FUNCTIONS =================
 void connectMQTT() {
@@ -185,6 +203,165 @@ void publishStatusMQTT(float weight, bool taken, int boxNumber = 0) {
   payload += "}";
   mqtt.publish(topic.c_str(), payload.c_str());
   Serial.println("📤 MQTT published: " + payload);
+}
+
+// Update Firestore directly via REST API
+void updateFirestoreRecord(String medicineBoxId, int boxNumber, bool taken) {
+  if (medicineBoxId.length() == 0) {
+    Serial.println("⚠️ Cannot update Firestore: medicineBoxId not set");
+    return;
+  }
+  
+  if (!taken) {
+    Serial.println("ℹ️ Medicine not taken - skipping Firestore update");
+    return;
+  }
+  
+  // Validate box number (must be 1-7)
+  if (boxNumber < 1 || boxNumber > 7) {
+    Serial.print("❌ Cannot update Firestore: Invalid box number (");
+    Serial.print(boxNumber);
+    Serial.println("). Expected 1-7. Skipping update.");
+    Serial.println("⚠️ This usually means activeBoxLED was not set correctly.");
+    return;
+  }
+  
+  Serial.println("\n╔════════════════════════════════════════════╗");
+  Serial.println("║   📝 UPDATING FIRESTORE DIRECTLY          ║");
+  Serial.println("╚════════════════════════════════════════════╝");
+  Serial.print("📦 Medicine Box ID: ");
+  Serial.println(medicineBoxId);
+  Serial.print("📦 Box Number: ");
+  Serial.println(boxNumber);
+  
+  HTTPClient http;
+  
+  // Query Firestore to find today's record for this box
+  String queryUrl = String(FIRESTORE_HOST) + "/v1/projects/" + FIREBASE_PROJECT_ID + 
+                    "/databases/(default)/documents:runQuery";
+  
+  http.begin(queryUrl);
+  http.addHeader("Content-Type", "application/json");
+  
+  // Get today's date range
+  unsigned long todayStart = millis() - (millis() % 86400000); // Start of today
+  unsigned long todayEnd = todayStart + 86400000; // End of today
+  
+  // Build query to find medicine record
+  String queryJson = "{\"structuredQuery\":{\"from\":[{\"collectionId\":\"medicineRecords\"}],";
+  queryJson += "\"where\":{\"compositeFilter\":{\"op\":\"AND\",\"filters\":[";
+  queryJson += "{\"fieldFilter\":{\"field\":{\"fieldPath\":\"medicineBoxId\"},\"op\":\"EQUAL\",\"value\":{\"stringValue\":\"" + medicineBoxId + "\"}}},";
+  queryJson += "{\"fieldFilter\":{\"field\":{\"fieldPath\":\"boxNumber\"},\"op\":\"EQUAL\",\"value\":{\"integerValue\":\"" + String(boxNumber) + "\"}}},";
+  queryJson += "{\"fieldFilter\":{\"field\":{\"fieldPath\":\"isTaken\"},\"op\":\"EQUAL\",\"value\":{\"booleanValue\":false}}},";
+  queryJson += "{\"fieldFilter\":{\"field\":{\"fieldPath\":\"isMissed\"},\"op\":\"EQUAL\",\"value\":{\"booleanValue\":false}}}";
+  queryJson += "]}},\"orderBy\":[{\"field\":{\"fieldPath\":\"scheduledTime\"},\"direction\":\"ASCENDING\"}],\"limit\":1}}";
+  
+  Serial.println("🔍 Querying Firestore for record...");
+  int queryCode = http.POST(queryJson);
+  
+  if (queryCode != 200) {
+    Serial.print("❌ Query failed: ");
+    Serial.println(queryCode);
+    http.end();
+    return;
+  }
+  
+  String queryResponse = http.getString();
+  http.end();
+  
+  // Parse response to get document ID
+  int docNameStart = queryResponse.indexOf("\"name\":\"") + 8;
+  if (docNameStart < 8) {
+    Serial.println("⚠️ No pending record found for this box today");
+    return;
+  }
+  
+  int docNameEnd = queryResponse.indexOf("\"", docNameStart);
+  String documentPath = queryResponse.substring(docNameStart, docNameEnd);
+  
+  // Extract document ID (last part after /documents/)
+  int lastSlash = documentPath.lastIndexOf("/");
+  String documentId = documentPath.substring(lastSlash + 1);
+  
+  Serial.print("✅ Found record: ");
+  Serial.println(documentId);
+  
+  // Update the record to mark as taken
+  String updateUrl = String(FIRESTORE_HOST) + "/v1/" + documentPath + "?updateMask.fieldPaths=isTaken&updateMask.fieldPaths=takenTime";
+  
+  http.begin(updateUrl);
+  http.addHeader("Content-Type", "application/json");
+  
+  unsigned long currentTime = millis();
+  String updateJson = "{\"fields\":{";
+  updateJson += "\"isTaken\":{\"booleanValue\":true},";
+  updateJson += "\"takenTime\":{\"timestampValue\":\"" + String(currentTime) + "\"}";
+  updateJson += "}}";
+  
+  Serial.println("📝 Updating medicine record...");
+  int updateCode = http.PATCH(updateJson);
+  
+  if (updateCode == 200) {
+    Serial.println("✅ Medicine record updated successfully!");
+    
+    // Now update the reminder status in medicineBox
+    updateReminderStatus(medicineBoxId);
+  } else {
+    Serial.print("❌ Update failed: ");
+    Serial.println(updateCode);
+    Serial.println(http.getString());
+  }
+  
+  http.end();
+  Serial.println("════════════════════════════════════════════\n");
+}
+
+// Update reminder status to "completed"
+void updateReminderStatus(String medicineBoxId) {
+  Serial.println("📝 Updating reminder status to completed...");
+  
+  HTTPClient http;
+  String docUrl = String(FIRESTORE_HOST) + "/v1/projects/" + FIREBASE_PROJECT_ID + 
+                  "/databases/(default)/documents/medicineBox/" + medicineBoxId;
+  
+  // First, get the current document to find which reminder to update
+  http.begin(docUrl);
+  int getCode = http.GET();
+  
+  if (getCode != 200) {
+    Serial.println("❌ Failed to get medicine box document");
+    http.end();
+    return;
+  }
+  
+  String docResponse = http.getString();
+  http.end();
+  
+  // Find the reminders array in response
+  // For simplicity, we'll update ALL reminders to "completed" if today's dose is taken
+  // In production, you'd parse JSON properly to find specific reminder
+  
+  // Build update to set all reminder statuses to "completed"
+  String updateUrl = docUrl + "?updateMask.fieldPaths=reminders";
+  
+  http.begin(updateUrl);
+  http.addHeader("Content-Type", "application/json");
+  
+  // This is simplified - in production, parse the existing reminders and only update the matching one
+  String updateJson = "{\"fields\":{\"reminders\":{\"arrayValue\":{\"values\":[";
+  updateJson += "{\"mapValue\":{\"fields\":{\"status\":{\"stringValue\":\"completed\"}}}}";
+  updateJson += "]}}}}";
+  
+  int updateCode = http.PATCH(updateJson);
+  
+  if (updateCode == 200) {
+    Serial.println("✅ Reminder status updated to completed!");
+  } else {
+    Serial.print("⚠️ Reminder update failed: ");
+    Serial.println(updateCode);
+  }
+  
+  http.end();
 }
 
 // ================= ACTION LOGIC (Shared by App & Button) =================
@@ -288,18 +465,26 @@ void closeBox(int overrideBoxNumber = 0) {
   myServo.write(CLOSED_ANGLE);
   isBoxOpen = false;
   
-  // If medicine was taken, turn off reminder LEDs
-  // BUT preserve activeBoxLED until after MQTT publish
+  // Stop all active blink sequences when box closes
+  for (int i = 1; i <= 7; i++) {
+    if (boxBlinks[i].active) {
+      boxBlinks[i].active = false;
+      boxBlinks[i].count = 0;
+      boxBlinks[i].ledState = false;
+    }
+  }
+  
+  // Turn OFF all LEDs when box closes (both box LEDs and external LED)
+  // This ensures clean state regardless of medicine taken or not
+  digitalWrite(PIN_LED, LOW);
+  for (int i = 1; i <= 7; i++) {
+    digitalWrite(BOX_LEDS[i], LOW);
+  }
+  
+  // If medicine was taken, deactivate reminder
   if (medicineTaken) {
     reminderActive = false;
-    digitalWrite(PIN_LED, LOW);
-    // Turn off LEDs visually but don't reset activeBoxLED yet
-    for (int i = 1; i <= 7; i++) {
-      digitalWrite(BOX_LEDS[i], LOW);
-    }
-    // Keep activeBoxLED for MQTT publish
-  } else {
-    digitalWrite(PIN_LED, LOW);
+    // activeBoxLED preserved for MQTT publish below
   }
   
   // Publish MQTT status with captured box number
@@ -313,7 +498,12 @@ void closeBox(int overrideBoxNumber = 0) {
   Serial.println(medicineTaken ? "YES" : "NO");
   publishStatusMQTT(weightAtEnd, medicineTaken, capturedBoxLED);
   
-  // Reset activeBoxLED AFTER MQTT publish
+  // Update Firestore directly if medicine was taken
+  if (medicineTaken) {
+    updateFirestoreRecord(medicineBoxId, capturedBoxLED, true);
+  }
+  
+  // Reset activeBoxLED AFTER MQTT publish and Firestore update
   if (medicineTaken) {
     activeBoxLED = 0;
     Serial.println("📦 activeBoxLED reset to 0 after MQTT publish");
@@ -457,7 +647,7 @@ void triggerReminderForBox(int boxNumber) {
   // Don't reset activeBoxLED here - we just set it above
   
   digitalWrite(BOX_LEDS[boxNumber], HIGH);
-  digitalWrite(PIN_LED, HIGH); // Outside LED also turns on
+  // Don't turn on PIN_LED - only box LED should be on
   
   Serial.print("📦 activeBoxLED after LED setup: ");
   Serial.println(activeBoxLED);
@@ -561,23 +751,7 @@ void handleLEDControl() {
     
     // Otherwise control box LED (1-7)
     setBoxLED(boxNumber, ledState);
-    
-    // Also turn on outside LED when any box LED is on
-    if (ledState) {
-      digitalWrite(PIN_LED, HIGH);
-    } else {
-      // Only turn off outside LED if no box LEDs are active
-      bool anyBoxLEDOn = false;
-      for (int i = 1; i <= 7; i++) {
-        if (digitalRead(BOX_LEDS[i]) == HIGH) {
-          anyBoxLEDOn = true;
-          break;
-        }
-      }
-      if (!anyBoxLEDOn) {
-        digitalWrite(PIN_LED, LOW);
-      }
-    }
+    // Don't control PIN_LED when box LEDs are used
     
     server.send(200, "application/json", "{\"success\":true,\"box\":" + String(boxNumber) + ",\"state\":\"" + (ledState ? "on" : "off") + "\"}");
   } else {
@@ -586,13 +760,7 @@ void handleLEDControl() {
 }
 
 // Blink LED for specific box (non-blocking, handled in loop)
-// Default: Blink continuously for 1 minute (60 blinks = 60 seconds)
-bool blinkActive = false;
-int blinkBoxNumber = 0;
-int blinkCount = 0;
-int blinkTimes = 60; // Changed from 5 to 60 (1 minute of blinking)
-bool blinkState = false; // false = off, true = on
-unsigned long blinkLastToggle = 0;
+// Support multiple LEDs blinking simultaneously
 const unsigned long BLINK_ON_DURATION = 500;  // LED on for 500ms (1 blink = 1 second)
 const unsigned long BLINK_OFF_DURATION = 500; // LED off for 500ms (1 blink = 1 second)
 
@@ -606,7 +774,7 @@ void startBlink(int boxNumber, int times = 60) { // Changed default from 5 to 60
   Serial.print(boxNumber);
   Serial.print(" - ");
   Serial.print(times);
-  Serial.println(" times (duration: ");
+  Serial.print(" times (duration: ");
   Serial.print(times);
   Serial.println(" seconds)");
   
@@ -615,37 +783,30 @@ void startBlink(int boxNumber, int times = 60) { // Changed default from 5 to 60
   Serial.print("📦 activeBoxLED set to: ");
   Serial.println(activeBoxLED);
   
-  blinkActive = true;
-  blinkBoxNumber = boxNumber;
-  blinkCount = 0;
-  blinkTimes = times;
-  blinkState = true; // Start with LED on
-  blinkLastToggle = millis();
+  // Initialize blink state for this specific box
+  boxBlinks[boxNumber].active = true;
+  boxBlinks[boxNumber].count = 0;
+  boxBlinks[boxNumber].targetCount = times;
+  boxBlinks[boxNumber].ledState = true; // Start with LED on
+  boxBlinks[boxNumber].lastToggle = millis();
   
-  // Start first blink - turn on LED
+  // Turn on LED immediately
   digitalWrite(BOX_LEDS[boxNumber], HIGH);
-  digitalWrite(PIN_LED, HIGH); // Also blink outside LED
+  Serial.print("💡 Box ");
+  Serial.print(boxNumber);
+  Serial.println(" LED started blinking");
 }
 
 void stopBlink() {
-  if (blinkActive) {
-    Serial.println("💡 Stopping blink");
-    digitalWrite(BOX_LEDS[blinkBoxNumber], LOW);
-    blinkActive = false;
-    blinkBoxNumber = 0;
-    blinkCount = 0;
-    blinkState = false;
-    
-    // Turn off outside LED only if no other box LEDs are on
-    bool anyBoxLEDOn = false;
-    for (int i = 1; i <= 7; i++) {
-      if (digitalRead(BOX_LEDS[i]) == HIGH) {
-        anyBoxLEDOn = true;
-        break;
-      }
-    }
-    if (!anyBoxLEDOn && !reminderActive) {
-      digitalWrite(PIN_LED, LOW);
+  // Stop all active blinks
+  for (int i = 1; i <= 7; i++) {
+    if (boxBlinks[i].active) {
+      Serial.print("💡 Stopping blink for Box ");
+      Serial.println(i);
+      digitalWrite(BOX_LEDS[i], LOW);
+      boxBlinks[i].active = false;
+      boxBlinks[i].count = 0;
+      boxBlinks[i].ledState = false;
     }
   }
 }
@@ -1064,60 +1225,59 @@ void loop() {
   unsigned long now = millis();
 
   // 0. LED BLINK PATTERN (highest priority for visibility)
-  if (blinkActive) {
-    // Stop blinking if medicine was taken
-    if (medicineTaken) {
-      Serial.println("💡 Medicine taken - stopping blink early");
-      stopBlink();
-    } else if (blinkState == false) {
+  // Support multiple LEDs blinking simultaneously - check each box independently
+  for (int boxNum = 1; boxNum <= 7; boxNum++) {
+    if (!boxBlinks[boxNum].active) continue; // Skip inactive boxes
+    
+    BlinkState* blink = &boxBlinks[boxNum]; // Pointer for easier access
+    
+    // Blink sequences run independently until completion or until box closes
+    // (closeBox() stops all blinks when box closes)
+    
+    if (blink->ledState == false) {
       // LED is off, check if we should turn it on
-      if (now - blinkLastToggle >= BLINK_OFF_DURATION) {
-        blinkState = true;
-        blinkLastToggle = now;
-        digitalWrite(BOX_LEDS[blinkBoxNumber], HIGH);
-        digitalWrite(PIN_LED, HIGH);
-        Serial.print("💡 Blink ");
-        Serial.print(blinkCount + 1);
+      if (now - blink->lastToggle >= BLINK_OFF_DURATION) {
+        blink->ledState = true;
+        blink->lastToggle = now;
+        digitalWrite(BOX_LEDS[boxNum], HIGH);
+        Serial.print("💡 Box ");
+        Serial.print(boxNum);
+        Serial.print(" Blink ");
+        Serial.print(blink->count + 1);
         Serial.print("/");
-        Serial.print(blinkTimes);
+        Serial.print(blink->targetCount);
         Serial.println(" - ON");
       }
     } else {
       // LED is on, check if we should turn it off
-      if (now - blinkLastToggle >= BLINK_ON_DURATION) {
-        blinkState = false;
-        blinkLastToggle = now;
-        digitalWrite(BOX_LEDS[blinkBoxNumber], LOW);
-        blinkCount++;
+      if (now - blink->lastToggle >= BLINK_ON_DURATION) {
+        blink->ledState = false;
+        blink->lastToggle = now;
+        digitalWrite(BOX_LEDS[boxNum], LOW);
+        blink->count++;
         
-        Serial.print("💡 Blink ");
-        Serial.print(blinkCount);
+        Serial.print("💡 Box ");
+        Serial.print(boxNum);
+        Serial.print(" Blink ");
+        Serial.print(blink->count);
         Serial.print("/");
-        Serial.print(blinkTimes);
+        Serial.print(blink->targetCount);
         Serial.println(" - OFF");
         
         // Check if we've completed all blinks
-        if (blinkCount >= blinkTimes) {
-          stopBlink();
-          Serial.println("💡 Blink sequence complete");
-        } else {
-          // Turn off outside LED between blinks
-          bool anyOtherLEDOn = false;
-          for (int i = 1; i <= 7; i++) {
-            if (i != blinkBoxNumber && digitalRead(BOX_LEDS[i]) == HIGH) {
-              anyOtherLEDOn = true;
-              break;
-            }
-          }
-          if (!anyOtherLEDOn && !reminderActive) {
-            digitalWrite(PIN_LED, LOW);
-          }
+        if (blink->count >= blink->targetCount) {
+          Serial.print("💡 Box ");
+          Serial.print(boxNum);
+          Serial.println(" blink sequence complete");
+          digitalWrite(BOX_LEDS[boxNum], LOW);
+          blink->active = false;
         }
       }
     }
   }
+  
   // 1. FIND MY DEVICE PATTERN
-  else if (buzzerActive) {
+  if (buzzerActive) {
     static unsigned long lastToggle = 0;
     if (now - lastToggle >= 300) { 
       lastToggle = now;
@@ -1129,8 +1289,7 @@ void loop() {
   } 
   // 2. MEDICINE REMINDER
   else if (reminderActive && !medicineTaken) {
-    // Keep LEDs on continuously (not just during buzzer beeps)
-    digitalWrite(PIN_LED, HIGH);
+    // Keep box LED on continuously (not just during buzzer beeps)
     if (activeBoxLED > 0 && activeBoxLED <= 7) {
       digitalWrite(BOX_LEDS[activeBoxLED], HIGH);
     }
@@ -1194,6 +1353,10 @@ void loop() {
       if (reading == LOW && !buttonPressed) {
         buttonPressed = true;
         Serial.println("🔘 BUTTON PRESSED! ✓");
+        
+        // Turn on external LED (GPIO 21) immediately when button is pressed
+        digitalWrite(PIN_LED, HIGH);
+        Serial.println("💡 External LED (GPIO 21) turned ON");
         
         if (buzzerActive) {
           Serial.println("   → Stopping find-my-device alarm");

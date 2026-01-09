@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/dose_record.dart';
 import '../models/medicine_box.dart';
+import 'device_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -13,6 +14,7 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final DeviceService _deviceService = DeviceService();
   
   Timer? _notificationCheckTimer;
   final Map<String, DateTime> _lastNotificationTime = {};
@@ -286,6 +288,24 @@ class NotificationService {
       notificationDetails,
       payload: doses.map((d) => d.reminderKey).join(','),
     );
+    
+    // 💡 Light up LED for each medicine box when notification is sent
+    print('💡 Lighting up LEDs for ${doses.length} reminder(s)');
+    for (var dose in doses) {
+      try {
+        // Get medicine box to find deviceId
+        final boxDoc = await _db.collection('medicineBox').doc(dose.boxId).get();
+        if (boxDoc.exists) {
+          final box = MedicineBox.fromFirestore(boxDoc);
+          print('💡 Blinking LED for Box ${dose.boxNumber} (Device: ${box.deviceId})');
+          // Blink LED for 7 minutes (420 blinks = 420 seconds) when reminder notification is sent
+          await _deviceService.blinkBoxLED(box.deviceId, dose.boxNumber, times: 420);
+        }
+      } catch (e) {
+        print('❌ Error lighting up box ${dose.boxNumber}: $e');
+        // Don't fail notification if LED fails
+      }
+    }
   }
 
   /// Cancel notification for a specific dose (when marked as taken/missed)
