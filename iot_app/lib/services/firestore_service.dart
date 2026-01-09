@@ -599,16 +599,24 @@ class FirestoreService {
   /// Called when ESP32 reports medicine taken via MQTT
   Future<void> autoCompleteRecordFromIoT(String medicineBoxId, int boxNumber) async {
     try {
-      print('🔍 Searching for record to auto-complete...');
-      print('   Medicine Box ID: $medicineBoxId');
-      print('   Box Number: $boxNumber');
+      print('\n╔════════════════════════════════════════════════════════════╗');
+      print('║   🔍 AUTO-COMPLETE RECORD FROM IOT STARTED                ║');
+      print('╚════════════════════════════════════════════════════════════╝');
+      print('📦 Medicine Box ID: $medicineBoxId');
+      print('📦 Box Number: $boxNumber');
+      print('⏰ Current Time: ${DateTime.now()}');
       
       final now = DateTime.now();
       final todayStart = DateTime(now.year, now.month, now.day);
       final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
       
+      print('\n📅 Searching for records between:');
+      print('   Start: $todayStart');
+      print('   End: $todayEnd');
+      
       // Simplified query to avoid complex composite index
       // Get all records for this medicine box today, filter in code
+      print('\n🔍 Querying Firestore...');
       final snapshot = await _db
           .collection('medicineRecords')
           .where('medicineBoxId', isEqualTo: medicineBoxId)
@@ -616,15 +624,43 @@ class FirestoreService {
           .where('scheduledTime', isLessThanOrEqualTo: todayEnd)
           .get();
       
-      print('📊 Found ${snapshot.docs.length} records today for this box');
+      print('✅ Query complete! Found ${snapshot.docs.length} total records today');
+      
+      // Debug: Print all records found
+      if (snapshot.docs.isEmpty) {
+        print('\n⚠️ WARNING: No records found for this medicineBoxId today!');
+        print('   Check if:');
+        print('   1. medicineBoxId matches: $medicineBoxId');
+        print('   2. Records exist in Firestore for today');
+        print('   3. scheduledTime is within today\'s range');
+        return;
+      }
+      
+      print('\n📋 All records found today:');
+      for (var doc in snapshot.docs) {
+        final record = MedicineRecord.fromFirestore(doc);
+        print('   - ID: ${record.id}');
+        print('     Box#: ${record.boxNumber}, Medicine: ${record.medicineName}');
+        print('     Scheduled: ${record.scheduledTime}');
+        print('     Status: ${record.status}, Taken: ${record.isTaken}, Missed: ${record.isMissed}');
+      }
       
       // Filter in code to find the right record
+      print('\n🔍 Filtering for valid records (boxNumber=$boxNumber, not taken, not missed)...');
       final validRecords = snapshot.docs.where((doc) {
         final record = MedicineRecord.fromFirestore(doc);
-        return record.boxNumber == boxNumber && 
+        final isValid = record.boxNumber == boxNumber && 
                !record.isTaken && 
                !record.isMissed;
+        if (isValid) {
+          print('   ✅ Valid: ${record.id} (${record.medicineName})');
+        } else {
+          print('   ❌ Skipped: ${record.id} - boxNumber=${record.boxNumber}, taken=${record.isTaken}, missed=${record.isMissed}');
+        }
+        return isValid;
       }).toList();
+      
+      print('\n📊 Found ${validRecords.length} valid records to process');
       
       // Sort by scheduled time and get first
       validRecords.sort((a, b) {
@@ -634,7 +670,12 @@ class FirestoreService {
       });
       
       if (validRecords.isEmpty) {
-        print('⚠️ No pending record found for box $boxNumber');
+        print('\n⚠️ No pending record found for box $boxNumber');
+        print('   Possible reasons:');
+        print('   1. All records already marked as taken or missed');
+        print('   2. No records scheduled for box $boxNumber today');
+        print('   3. boxNumber mismatch (Arduino sent $boxNumber)');
+        print('════════════════════════════════════════════════════════════\n');
         return;
       }
       
@@ -642,19 +683,34 @@ class FirestoreService {
       final recordId = recordDoc.id;
       final record = MedicineRecord.fromFirestore(recordDoc);
       
-      print('✅ Found record to complete: $recordId');
+      print('\n✅ Found record to complete!');
+      print('   Record ID: $recordId');
       print('   Medicine: ${record.medicineName}');
+      print('   Box Number: ${record.boxNumber}');
       print('   Scheduled: ${record.scheduledTime}');
+      print('   Current Status: ${record.status}');
       
       // Mark as taken
+      print('\n📝 Marking record as taken...');
       await markRecordAsTaken(recordId);
+      print('✅ Record marked as taken in Firestore!');
       
       // Update reminder statuses to reflect the change
+      print('\n🔄 Updating reminder statuses...');
       await updateAllReminderStatuses();
+      print('✅ Reminder statuses updated!');
       
-      print('✅ Record auto-completed via IoT!');
-    } catch (e) {
-      print('❌ Error auto-completing record: $e');
+      print('\n╔════════════════════════════════════════════════════════════╗');
+      print('║   ✅ RECORD AUTO-COMPLETED SUCCESSFULLY! ✅               ║');
+      print('╚════════════════════════════════════════════════════════════╝\n');
+    } catch (e, stackTrace) {
+      print('\n╔════════════════════════════════════════════════════════════╗');
+      print('║   ❌ ERROR AUTO-COMPLETING RECORD! ❌                     ║');
+      print('╚════════════════════════════════════════════════════════════╝');
+      print('Error: $e');
+      print('Stack Trace:');
+      print(stackTrace);
+      print('════════════════════════════════════════════════════════════\n');
     }
   }
 }

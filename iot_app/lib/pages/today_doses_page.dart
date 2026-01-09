@@ -16,6 +16,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
   final DeviceService _deviceService = DeviceService();
   final MqttService _mqttService = MqttService();
   StreamSubscription? _mqttSubscription;
+  Timer? _statusUpdateTimer;
 
   @override
   void initState() {
@@ -25,11 +26,17 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     
     // Listen to MQTT status updates
     _listenToMqttUpdates();
+    
+    // Periodically update reminder statuses (every 30 seconds)
+    _statusUpdateTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+      _updateReminderStatuses();
+    });
   }
 
   @override
   void dispose() {
     _mqttSubscription?.cancel();
+    _statusUpdateTimer?.cancel();
     super.dispose();
   }
 
@@ -107,10 +114,28 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Today\'s Doses'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: () async {
+              await _updateReminderStatuses();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('✅ Refreshed'),
+                  duration: Duration(seconds: 1),
+                  backgroundColor: Color(0xFF66BB6A),
+                ),
+              );
+            },
+            tooltip: 'Refresh statuses',
+          ),
+        ],
       ),
-      body: StreamBuilder<List<MedicineRecord>>(
-        stream: _firestoreService.getTodayDosesFromBoxes(),
-        builder: (context, snapshot) {
+      body: RefreshIndicator(
+        onRefresh: _updateReminderStatuses,
+        child: StreamBuilder<List<MedicineRecord>>(
+          stream: _firestoreService.getTodayDosesFromBoxes(),
+          builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
@@ -136,42 +161,30 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
           }
 
           final records = snapshot.data!;
-          final now = DateTime.now();
-          final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-          // Categorize doses with overdue logic
+          // Categorize doses based on status field
           final upcoming = <MedicineRecord>[];
           final overdue = <MedicineRecord>[];
           final completed = <MedicineRecord>[];
           final missed = <MedicineRecord>[];
 
           for (var record in records) {
-            if (record.isTaken) {
-              completed.add(record);
-            } else if (record.isMissed) {
-              missed.add(record);
-            } else if (record.scheduledTime.isAfter(now)) {
-              upcoming.add(record);
-            } else {
-              // Past scheduled time and not taken
-              final timeSinceScheduled = now.difference(record.scheduledTime);
-              final isPrescription = record.medicineType.toLowerCase() == 'prescription';
-              
-              if (isPrescription) {
-                // Prescription: overdue within 1 hour, missed after 1 hour
-                if (timeSinceScheduled.inMinutes <= 60) {
-                  overdue.add(record);
-                } else {
-                  missed.add(record);
-                }
-              } else {
-                // Supplement: overdue until end of day, missed after that
-                if (now.isBefore(endOfDay)) {
-                  overdue.add(record);
-                } else {
-                  missed.add(record);
-                }
-              }
+            final status = record.status?.toLowerCase() ?? 'upcoming';
+            
+            switch (status) {
+              case 'completed':
+                completed.add(record);
+                break;
+              case 'missed':
+                missed.add(record);
+                break;
+              case 'overdue':
+                overdue.add(record);
+                break;
+              case 'upcoming':
+              default:
+                upcoming.add(record);
+                break;
             }
           }
 
@@ -203,13 +216,14 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
           );
         },
       ),
+      ),
     );
   }
 
   Widget _buildStatsCard(List<MedicineRecord> records, int overdueCount) {
     int total = records.length;
-    int taken = records.where((r) => r.isTaken).length;
-    int missed = records.where((r) => r.isMissed).length;
+    int taken = records.where((r) => r.status?.toLowerCase() == 'completed').length;
+    int missed = records.where((r) => r.status?.toLowerCase() == 'missed').length;
 
     double progress = total > 0 ? taken / total : 0;
 
@@ -349,10 +363,10 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
                     icon: Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
                     onPressed: () => _markAsTaken(record.id),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
-                    onPressed: () => _markAsMissed(record.id),
-                  ),
+                  // IconButton(
+                  //   icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
+                  //   onPressed: () => _markAsMissed(record.id),
+                  // ),
                 ],
               )
             : !isCompleted && !isMissed
@@ -380,13 +394,13 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
   Future<void> _markAsTaken(String recordId) async {
     try {
-      await _firestoreService.markRecordAsTaken(recordId);
+      await _firestoreService.updateReminderStatus(recordId, 'completed', DateTime.now().toIso8601String());
       
-      // Update reminder statuses after marking as taken
+      // Update reminder statuses after marking as completed
       await _updateReminderStatuses();
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Dose marked as taken!'), backgroundColor: Color(0xFF66BB6A)),
+        SnackBar(content: Text('Dose marked as completed!'), backgroundColor: Color(0xFF66BB6A)),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -397,7 +411,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
   Future<void> _markAsMissed(String recordId) async {
     try {
-      await _firestoreService.markRecordAsMissed(recordId);
+      await _firestoreService.updateReminderStatus(recordId, 'missed', DateTime.now().toIso8601String());
       
       // Update reminder statuses after marking as missed
       await _updateReminderStatuses();
