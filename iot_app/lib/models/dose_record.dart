@@ -31,28 +31,25 @@ class MedicineRecord {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  // Backward compatibility getters
-  bool get isTaken => status == 'completed';
+  // ✅ REACTIVE GETTERS (FIXED)
+  bool get isTaken => status == 'completed' || takenTime != null;
   bool get isMissed => status == 'missed';
 
   factory MedicineRecord.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    
-    // Handle migration from old boolean fields to new status field
-    String recordStatus;
-    if (data.containsKey('status')) {
-      recordStatus = data['status'] ?? 'upcoming';
-    } else {
-      // Backward compatibility: convert old booleans to status
+    final data = doc.data() as Map<String, dynamic>;
+
+    // Normalize status
+    String recordStatus = (data['status'] ?? 'upcoming').toString().toLowerCase();
+
+    // Backward compatibility for old records
+    if (!data.containsKey('status')) {
       if (data['isTaken'] == true) {
         recordStatus = 'completed';
       } else if (data['isMissed'] == true) {
         recordStatus = 'missed';
-      } else {
-        recordStatus = 'upcoming';
       }
     }
-    
+
     return MedicineRecord(
       id: data['id'] ?? doc.id,
       medicineBoxId: data['medicineBoxId'] ?? '',
@@ -64,8 +61,8 @@ class MedicineRecord {
       reminderHour: data['reminderHour'] ?? 0,
       reminderMinute: data['reminderMinute'] ?? 0,
       scheduledTime: (data['scheduledTime'] as Timestamp).toDate(),
-      takenTime: data['takenTime'] != null 
-          ? (data['takenTime'] as Timestamp).toDate() 
+      takenTime: data['takenTime'] != null
+          ? (data['takenTime'] as Timestamp).toDate()
           : null,
       status: recordStatus,
       createdAt: data['createdAt'] != null

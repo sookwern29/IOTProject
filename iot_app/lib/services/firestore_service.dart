@@ -395,14 +395,16 @@ class FirestoreService {
               reminder.minute,
             );
 
-            final recordId = 'temp_${box.id}_${reminder.id}_${scheduledTime.millisecondsSinceEpoch}';
-
-            // Check if a record already exists in database for this exact time
+            // Check if a record already exists for this reminder today (using time range)
+            final dayStart = DateTime(today.year, today.month, today.day);
+            final dayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59);
+            
             final existingRecords = await _db
                 .collection('medicineRecords')
                 .where('medicineBoxId', isEqualTo: box.id)
                 .where('reminderTimeId', isEqualTo: reminder.id)
-                .where('scheduledTime', isEqualTo: Timestamp.fromDate(scheduledTime))
+                .where('scheduledTime', isGreaterThanOrEqualTo: Timestamp.fromDate(dayStart))
+                .where('scheduledTime', isLessThanOrEqualTo: Timestamp.fromDate(dayEnd))
                 .limit(1)
                 .get();
 
@@ -412,6 +414,8 @@ class FirestoreService {
               record = MedicineRecord.fromFirestore(existingRecords.docs.first);
             } else {
               // Create new record for display and save to database
+              final recordId = 'temp_${box.id}_${reminder.id}_${scheduledTime.millisecondsSinceEpoch}';
+              
               record = MedicineRecord(
                 id: recordId,
                 medicineBoxId: box.id,
@@ -451,7 +455,7 @@ class FirestoreService {
             snapshot.docs.map((doc) => MedicineRecord.fromFirestore(doc)).toList());
   }
 
-  // Generate medicine records for a reminder
+  // Generate medicine records for a reminder (creates only 1 record - next occurrence)
   Future<void> generateRecordsForReminder(
     MedicineBox box,
     ReminderTime reminder,
@@ -460,6 +464,7 @@ class FirestoreService {
     DateTime now = DateTime.now();
     DateTime endDate = now.add(Duration(days: daysAhead));
 
+    // Find the next occurrence of this reminder
     for (DateTime date = now;
         date.isBefore(endDate);
         date = date.add(Duration(days: 1))) {
@@ -493,6 +498,9 @@ class FirestoreService {
           );
           
           await addMedicineRecord(record);
+          
+          // Create only 1 record - stop after first match
+          break;
         }
       }
     }

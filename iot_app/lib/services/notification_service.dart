@@ -149,10 +149,17 @@ class NotificationService {
           // Create a unique key for this reminder (box + time)
           final reminderKey = '${box.id}_${reminder.id}';
           
+          // Skip if reminder status is already completed
+          if (reminder.status?.toLowerCase() == 'completed') {
+            // Clear notification tracking for completed reminders
+            _lastNotificationTime.remove(reminderKey);
+            continue;
+          }
+          
           // Check if dose is already taken/missed in medicineRecords
           final recordQuery = await _db
               .collection('medicineRecords')
-              .where('boxId', isEqualTo: box.id)
+              .where('medicineBoxId', isEqualTo: box.id)
               .where('scheduledTime', isEqualTo: Timestamp.fromDate(scheduledTime))
               .limit(1)
               .get();
@@ -161,6 +168,8 @@ class NotificationService {
           if (recordQuery.docs.isNotEmpty) {
             final record = MedicineRecord.fromFirestore(recordQuery.docs.first);
             if (record.status == 'completed' || record.status == 'missed') {
+              // Clear notification tracking for completed/missed doses
+              _lastNotificationTime.remove(reminderKey);
               continue;
             }
           }
