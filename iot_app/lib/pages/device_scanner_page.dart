@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
@@ -15,13 +13,8 @@ class DeviceScannerPage extends StatefulWidget {
   _DeviceScannerPageState createState() => _DeviceScannerPageState();
 }
 
-class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTickerProviderStateMixin {
-  // Bluetooth
-  List<ScanResult> _scanResults = [];
-  bool _isScanning = false;
-  StreamSubscription? _scanSubscription;
-  BluetoothDevice? _connectedDevice;
-  
+class _DeviceScannerPageState extends State<DeviceScannerPage>
+    with SingleTickerProviderStateMixin {
   // WiFi/IP Scanner
   final DeviceService _deviceService = DeviceService();
   final FirestoreService _firestoreService = FirestoreService();
@@ -31,25 +24,23 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
   int _scannedCount = 0;
   int _totalToScan = 0;
   String _scanStatus = 'Ready to scan';
-  
+
   // Manual IP Entry
   final TextEditingController _ipController = TextEditingController();
   final TextEditingController _deviceIdController = TextEditingController();
-  
+
   // Tab Controller
   late TabController _tabController;
-  
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _checkBluetoothPermissions();
+    _tabController = TabController(length: 1, vsync: this);
     _loadSavedDevices();
   }
 
   @override
   void dispose() {
-    _scanSubscription?.cancel();
     _tabController.dispose();
     _ipController.dispose();
     _deviceIdController.dispose();
@@ -57,130 +48,34 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
   }
 
   Future<void> _checkBluetoothPermissions() async {
-    // Request necessary permissions for Bluetooth
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.location,
-    ].request();
-
-    if (statuses.values.any((status) => status.isDenied)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Bluetooth permissions are required to scan for devices'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
+    // Bluetooth permissions removed - WiFi only
   }
 
   Future<void> _startScan() async {
-    setState(() {
-      _scanResults.clear();
-      _isScanning = true;
-    });
-
-    try {
-      // Check if Bluetooth is on
-      if (await FlutterBluePlus.isSupported == false) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Bluetooth not supported on this device')),
-        );
-        setState(() => _isScanning = false);
-        return;
-      }
-
-      // Start scanning
-      await FlutterBluePlus.startScan(timeout: Duration(seconds: 10));
-
-      // Listen to scan results
-      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-        setState(() {
-          _scanResults = results;
-        });
-      });
-
-      // Auto-stop scanning after timeout
-      Future.delayed(Duration(seconds: 10), () {
-        _stopScan();
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error scanning: $e'), backgroundColor: Theme.of(context).colorScheme.error),
-      );
-      setState(() => _isScanning = false);
-    }
+    // Bluetooth scan removed
   }
 
   Future<void> _stopScan() async {
-    await FlutterBluePlus.stopScan();
-    setState(() => _isScanning = false);
+    // Bluetooth scan removed
   }
 
-  Future<void> _connectToDevice(BluetoothDevice device) async {
-    try {
-      await device.connect(timeout: Duration(seconds: 15));
-      setState(() {
-        _connectedDevice = device;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Connected to ${device.platformName}'),
-          backgroundColor: Theme.of(context).colorScheme.tertiary,
-        ),
-      );
-
-      // Here you would typically discover services and characteristics
-      // and communicate with the medicine box device
-      
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to connect: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    }
+  Future<void> _connectToDevice(dynamic device) async {
+    // Bluetooth connection removed
   }
 
   Future<void> _disconnectDevice() async {
-    if (_connectedDevice != null) {
-      await _connectedDevice!.disconnect();
-      setState(() {
-        _connectedDevice = null;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Disconnected from device')),
-      );
-    }
+    // Bluetooth disconnection removed
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Device Scanner'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(icon: Icon(Icons.wifi), text: 'WiFi/IP'),
-            Tab(icon: Icon(Icons.bluetooth), text: 'Bluetooth'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildWiFiScanner(),
-          _buildBluetoothScanner(),
-        ],
-      ),
+      appBar: AppBar(title: Text('Device Scanner')),
+      body: _buildWiFiScanner(),
     );
   }
-  
-  // WiFi/IP Scanner Tab
+
+  // WiFi/IP Scanner
   Widget _buildWiFiScanner() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(16),
@@ -200,7 +95,10 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                       SizedBox(width: 8),
                       Text(
                         'Auto-Discover Devices',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -215,14 +113,21 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                   SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: _isIPScanning ? null : _scanNetwork,
-                    icon: _isIPScanning 
+                    icon: _isIPScanning
                         ? SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : Icon(Icons.wifi_find),
-                    label: Text(_isIPScanning ? 'Scanning Network...' : 'Start Network Scan'),
+                    label: Text(
+                      _isIPScanning
+                          ? 'Scanning Network...'
+                          : 'Start Network Scan',
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color(0xFF1976D2),
                       foregroundColor: Colors.white,
@@ -238,7 +143,10 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                           SizedBox(height: 8),
                           Text(
                             'Scanned $_scannedCount / $_totalToScan IPs (Found: ${_discoveredDevices.length})',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
                           ),
                         ],
                       ),
@@ -248,9 +156,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
               ),
             ),
           ),
-          
+
           SizedBox(height: 20),
-          
+
           // Discovered Devices
           if (_discoveredDevices.isNotEmpty) ...[
             Row(
@@ -264,18 +172,16 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                   onPressed: _clearSavedDevices,
                   icon: Icon(Icons.delete_outline, size: 18),
                   label: Text('Clear All'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.red,
-                  ),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
                 ),
               ],
             ),
             SizedBox(height: 12),
             ..._discoveredDevices.map((device) => _buildDeviceCard(device)),
           ],
-          
+
           SizedBox(height: 20),
-          
+
           // Manual IP Entry
           Card(
             child: Padding(
@@ -289,7 +195,10 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                       SizedBox(width: 8),
                       Text(
                         'Manual Configuration',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -302,7 +211,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.router),
                     ),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                   SizedBox(height: 12),
                   TextField(
@@ -348,9 +259,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
               ),
             ),
           ),
-          
+
           SizedBox(height: 20),
-          
+
           // Instructions
           Card(
             color: Colors.blue[50],
@@ -390,145 +301,12 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       ),
     );
   }
-  
+
   // Bluetooth Scanner Tab (existing)
   Widget _buildBluetoothScanner() {
-    return Column(
-      children: [
-          if (_connectedDevice != null)
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(16),
-              color: Color(0xFFE8F5E9),
-              child: Row(
-                children: [
-                  Icon(Icons.bluetooth_connected, color: Color(0xFF66BB6A)),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Connected to: ${_connectedDevice!.platformName}',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: Colors.red),
-                    onPressed: _disconnectDevice,
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isScanning ? null : _startScan,
-                    icon: Icon(_isScanning ? Icons.hourglass_empty : Icons.search),
-                    label: Text(_isScanning ? 'Scanning...' : 'Scan for Devices'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.indigo,
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
-                if (_isScanning) ...[
-                  SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: _stopScan,
-                    child: Text('Stop'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (_isScanning)
-            LinearProgressIndicator(),
-          Expanded(
-            child: _scanResults.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.bluetooth_searching,
-                          size: 100,
-                          color: Colors.grey,
-                        ),
-                        SizedBox(height: 20),
-                        Text(
-                          _isScanning
-                              ? 'Searching for devices...'
-                              : 'No devices found',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Tap "Scan for Devices" to start',
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: EdgeInsets.all(16),
-                    itemCount: _scanResults.length,
-                    itemBuilder: (context, index) {
-                      final result = _scanResults[index];
-                      final device = result.device;
-                      final deviceName = device.platformName.isNotEmpty
-                          ? device.platformName
-                          : 'Unknown Device';
-
-                      return Card(
-                        margin: EdgeInsets.only(bottom: 12),
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.all(16),
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.indigo,
-                            child: Icon(
-                              Icons.devices,
-                              color: Colors.white,
-                            ),
-                          ),
-                          title: Text(
-                            deviceName,
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(height: 4),
-                              Text('ID: ${device.remoteId}'),
-                              Text('RSSI: ${result.rssi} dBm'),
-                            ],
-                          ),
-                          trailing: _connectedDevice?.remoteId == device.remoteId
-                              ? Icon(Icons.check_circle, color: Colors.green)
-                              : ElevatedButton(
-                                  onPressed: () => _connectToDevice(device),
-                                  child: Text('Connect'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.indigo,
-                                  ),
-                                ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-    ); 
+    return Center(child: Text('Bluetooth scanner removed'));
   }
-  
+
   // WiFi Scanner Methods
   Future<void> _scanNetwork() async {
     setState(() {
@@ -538,7 +316,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       _scannedCount = 0;
       _scanStatus = 'Getting network info...';
     });
-    
+
     try {
       // Get local IP to determine network range
       String? localIp;
@@ -579,7 +357,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
         );
         return;
       }
-      
+
       // Get network prefix (e.g., 192.168.32)
       final parts = localIp.split('.');
       final networkPrefix = '${parts[0]}.${parts[1]}.${parts[2]}';
@@ -609,13 +387,14 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
         setState(() {
           _scannedCount = end;
           _scanProgress = end / 254;
-          _scanStatus = 'Scanned $end/254 IPs... (Found: ${_discoveredDevices.length})';
+          _scanStatus =
+              'Scanned $end/254 IPs... (Found: ${_discoveredDevices.length})';
         });
 
         // Small delay between batches
         await Future.delayed(const Duration(milliseconds: 100));
       }
-      
+
       setState(() {
         _isIPScanning = false;
         _scanProgress = 1;
@@ -625,11 +404,13 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
           _scanStatus = 'Found ${_discoveredDevices.length} device(s)!';
         }
       });
-      
+
       if (_discoveredDevices.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('No ESP32 devices found. Check if:\n• ESP32 is powered on\n• ESP32 is on same WiFi\n• Check Serial Monitor for IP'),
+            content: Text(
+              'No ESP32 devices found. Check if:\n• ESP32 is powered on\n• ESP32 is on same WiFi\n• Check Serial Monitor for IP',
+            ),
             backgroundColor: Colors.orange,
             duration: Duration(seconds: 5),
           ),
@@ -647,12 +428,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
         _isIPScanning = false;
         _scanStatus = 'Scan error: $e';
       });
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Scan failed: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Scan failed: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -670,7 +448,8 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
         try {
           final data = json.decode(response.body);
           if (data['device'] == 'Smart Medicine Box') {
-            final deviceId = data['boxId'] ?? data['medicineBoxId'] ?? 'device_$ip';
+            final deviceId =
+                data['boxId'] ?? data['medicineBoxId'] ?? 'device_$ip';
             final deviceData = {
               'ip': ip,
               'name': data['device'] ?? 'Smart Medicine Box',
@@ -686,7 +465,11 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
             });
             _saveDevicesToDisk();
             // Save to Firestore devices collection
-            await _saveDeviceToFirestore(deviceId, ip, data['device'] ?? 'Smart Medicine Box');
+            await _saveDeviceToFirestore(
+              deviceId,
+              ip,
+              data['device'] ?? 'Smart Medicine Box',
+            );
             // Automatically link to all medicine boxes
             await _autoLinkToAllBoxes(deviceId, ip);
             return;
@@ -705,7 +488,8 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
         try {
           final data = json.decode(statusResponse.body);
           if (data.containsKey('device')) {
-            final deviceId = data['boxId'] ?? data['medicineBoxId'] ?? 'device_$ip';
+            final deviceId =
+                data['boxId'] ?? data['medicineBoxId'] ?? 'device_$ip';
             final deviceData = {
               'ip': ip,
               'name': 'Smart Medicine Box',
@@ -730,9 +514,13 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       // Device not found or not responding - ignore
     }
   }
-  
+
   /// Save discovered device to Firestore devices collection
-  Future<void> _saveDeviceToFirestore(String deviceId, String ip, String name) async {
+  Future<void> _saveDeviceToFirestore(
+    String deviceId,
+    String ip,
+    String name,
+  ) async {
     try {
       await _firestoreService.saveDeviceToFirestore(deviceId, ip, name);
       print('Saved device $deviceId ($ip) to Firestore');
@@ -740,12 +528,12 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       print('Error saving device to Firestore: $e');
     }
   }
-  
+
   /// Automatically link discovered device to all medicine boxes
   Future<void> _autoLinkToAllBoxes(String deviceId, String ip) async {
     try {
       final boxes = await _firestoreService.getMedicineBoxes().first;
-      
+
       for (var box in boxes) {
         // Update each box's deviceId
         final updatedBox = MedicineBox(
@@ -759,24 +547,26 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
           reminders: box.reminders,
           compartments: box.compartments,
         );
-        
+
         await _firestoreService.updateMedicineBox(updatedBox);
         _deviceService.setDeviceIp(deviceId, ip);
       }
-      
+
       if (boxes.isNotEmpty) {
-        print('Auto-linked device $deviceId to ${boxes.length} medicine box(es)');
+        print(
+          'Auto-linked device $deviceId to ${boxes.length} medicine box(es)',
+        );
       }
     } catch (e) {
       print('Error auto-linking device: $e');
     }
   }
-  
+
   Future<void> _loadSavedDevices() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final devicesJson = prefs.getString('discovered_devices');
-      
+
       if (devicesJson != null) {
         final List<dynamic> devicesList = json.decode(devicesJson);
         setState(() {
@@ -790,7 +580,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       print('Error loading saved devices: $e');
     }
   }
-  
+
   Future<void> _saveDevicesToDisk() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -800,7 +590,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       print('Error saving devices: $e');
     }
   }
-  
+
   Future<void> _clearSavedDevices() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -819,26 +609,26 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       print('Error clearing devices: $e');
     }
   }
-  
+
   Future<void> _testConnection() async {
     if (_ipController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter an IP address')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Please enter an IP address')));
       return;
     }
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Testing connection...')),
-    );
-    
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Testing connection...')));
+
     try {
       // Create a temporary device ID for testing
       final tempId = 'test_${DateTime.now().millisecondsSinceEpoch}';
       _deviceService.setDeviceIp(tempId, _ipController.text);
-      
+
       final status = await _deviceService.getDeviceStatus(tempId);
-      
+
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -879,7 +669,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
               Text('Connection Failed'),
             ],
           ),
-          content: Text('Could not connect to device at ${_ipController.text}\n\nError: $e'),
+          content: Text(
+            'Could not connect to device at ${_ipController.text}\n\nError: $e',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -890,32 +682,32 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       );
     }
   }
-  
+
   Future<void> _saveManualDevice() async {
     if (_ipController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter an IP address')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Please enter an IP address')));
       return;
     }
-    
+
     try {
       String deviceId = _deviceIdController.text.trim();
-      
+
       // If no device ID, auto-generate one
       if (deviceId.isEmpty) {
         deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
       }
-      
+
       _deviceService.setDeviceIp(deviceId, _ipController.text);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Device saved! ID: $deviceId'),
           backgroundColor: Colors.green,
         ),
       );
-      
+
       // Clear fields
       _ipController.clear();
       _deviceIdController.clear();
@@ -928,15 +720,15 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       );
     }
   }
-  
+
   Widget _buildDeviceCard(Map<String, dynamic> device) {
-    final lastSeen = device['lastSeen'] != null 
-        ? DateTime.parse(device['lastSeen']) 
+    final lastSeen = device['lastSeen'] != null
+        ? DateTime.parse(device['lastSeen'])
         : null;
-    final timeAgo = lastSeen != null 
+    final timeAgo = lastSeen != null
         ? _formatTimeAgo(DateTime.now().difference(lastSeen))
         : 'Just now';
-    
+
     return Card(
       margin: EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -1039,7 +831,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       ),
     );
   }
-  
+
   String _formatTimeAgo(Duration duration) {
     if (duration.inSeconds < 60) {
       return 'Just now';
@@ -1051,12 +843,12 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       return '${duration.inDays}d ago';
     }
   }
-  
+
   Future<void> _saveDiscoveredDevice(Map<String, dynamic> device) async {
     try {
       final deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
       _deviceService.setDeviceIp(deviceId, device['ip']);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Device saved! ID: $deviceId'),
@@ -1072,21 +864,21 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       );
     }
   }
-  
+
   Future<void> _linkToBox(Map<String, dynamic> device) async {
     // Show dialog to select medicine box
     final boxesStream = _firestoreService.getMedicineBoxes();
     final boxes = await boxesStream.first;
-    
+
     if (!mounted) return;
-    
+
     if (boxes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No medicine boxes found. Create one first.')),
       );
       return;
     }
-    
+
     // Build the list of widgets
     final boxWidgets = boxes.map((box) {
       return ListTile(
@@ -1102,16 +894,13 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
         },
       );
     }).toList();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Link to Medicine Box'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: boxWidgets,
-          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: boxWidgets),
         ),
         actions: [
           TextButton(
@@ -1122,33 +911,40 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       ),
     );
   }
-  
-  Future<void> _saveLinkToBox(MedicineBox box, Map<String, dynamic> device) async {
+
+  Future<void> _saveLinkToBox(
+    MedicineBox box,
+    Map<String, dynamic> device,
+  ) async {
     try {
       // Get the deviceId from the discovered device (e.g., "D50FF8")
       final deviceId = device['deviceId'] ?? 'device_${device['ip']}';
-      
+
       // Save IP mapping in SharedPreferences for quick access
       _deviceService.setDeviceIp(deviceId, device['ip']);
-      
+
       // Update the medicine box's deviceId in Firestore to match the device
       final updatedBox = MedicineBox(
         id: box.id,
         name: box.name,
         boxNumber: box.boxNumber,
-        deviceId: deviceId,  // Update with the correct deviceId
+        deviceId: deviceId, // Update with the correct deviceId
         medicineType: box.medicineType,
         isConnected: true,
         lastUpdated: DateTime.now(),
         reminders: box.reminders,
         compartments: box.compartments,
       );
-      
+
       await _firestoreService.updateMedicineBox(updatedBox);
-      
+
       // Also ensure device is saved to Firestore devices collection
-      await _saveDeviceToFirestore(deviceId, device['ip'], device['name'] ?? 'Smart Medicine Box');
-      
+      await _saveDeviceToFirestore(
+        deviceId,
+        device['ip'],
+        device['name'] ?? 'Smart Medicine Box',
+      );
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Device linked to ${box.name}! (ID: $deviceId)'),
@@ -1164,25 +960,24 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
       );
     }
   }
-  
+
   /// Trigger buzzer on device to help locate it
   Future<void> _findDevice(Map<String, dynamic> device) async {
     try {
       final ip = device['ip'];
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('🔊 Activating buzzer on device...'),
           backgroundColor: Color(0xFFFFA726),
-
         ),
       );
-      
+
       // Call /startalarm endpoint to trigger buzzer
       final response = await http
           .get(Uri.parse('http://$ip/startalarm'))
           .timeout(Duration(seconds: 5));
-      
+
       if (response.statusCode == 200) {
         // Show dialog with stop button
         showDialog(
@@ -1203,7 +998,11 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.notifications_active, size: 64, color: Color(0xFFFFA726)),
+                Icon(
+                  Icons.notifications_active,
+                  size: 64,
+                  color: Color(0xFFFFA726),
+                ),
                 SizedBox(height: 16),
                 Text(
                   'The device at $ip is now beeping.',
@@ -1221,7 +1020,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
               TextButton.icon(
                 onPressed: () async {
                   try {
-                    await http.get(Uri.parse('http://$ip/stopbuzzer')).timeout(Duration(seconds: 3));
+                    await http
+                        .get(Uri.parse('http://$ip/stopbuzzer'))
+                        .timeout(Duration(seconds: 3));
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -1240,29 +1041,27 @@ class _DeviceScannerPageState extends State<DeviceScannerPage> with SingleTicker
                 },
                 icon: Icon(Icons.volume_off),
                 label: Text('Stop Buzzer'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.red,
-                ),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
               ),
             ],
           ),
         );
       } else {
-        throw Exception('Failed to activate buzzer (HTTP ${response.statusCode})');
+        throw Exception(
+          'Failed to activate buzzer (HTTP ${response.statusCode})',
+        );
       }
     } catch (e) {
       String errorMessage = 'Error: $e';
-      
-      if (e.toString().contains('TimeoutException') || 
+
+      if (e.toString().contains('TimeoutException') ||
           e.toString().contains('timed out')) {
-        errorMessage = 'Device not responding. Check if it\'s powered on and connected to WiFi.';
+        errorMessage =
+            'Device not responding. Check if it\'s powered on and connected to WiFi.';
       }
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
       );
     }
   }

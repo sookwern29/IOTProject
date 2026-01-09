@@ -394,16 +394,6 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                             ),
                           ),
                           DropdownMenuItem(
-                            value: 'over-the-counter',
-                            child: Row(
-                              children: [
-                                Icon(Icons.shopping_bag, size: 20, color: Color(0xFF1976D2)),
-                                SizedBox(width: 8),
-                                Text('Over the Counter'),
-                              ],
-                            ),
-                          ),
-                          DropdownMenuItem(
                             value: 'supplement',
                             child: Row(
                               children: [
