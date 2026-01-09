@@ -64,6 +64,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
               behavior: SnackBarBehavior.floating,
             ),
           );
+          // LED is already handled by ESP32 - no need to send command back
         }
       } else if (taken == false && boxNumber != null) {
         // Medicine NOT taken - show info notification
@@ -87,6 +88,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
               behavior: SnackBarBehavior.floating,
             ),
           );
+          // LED is already handled by ESP32 - no need to send command back
         }
       }
     });
@@ -411,7 +413,8 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
   }
 
   Future<void> _lightUpBox(int boxNumber) async {
-    try {//Get the medicine box to find deviceId
+    try {
+      // Get the medicine box to find deviceId
       final box = await _firestoreService.getMedicineBoxByBoxNumber(boxNumber);
       
       if (box == null) {

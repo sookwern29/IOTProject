@@ -132,18 +132,23 @@ class FirestoreService {
             reminder.minute,
           );
 
-          // Check if user has already marked this as taken (completed)
-          final recordSnapshot = await _db
+          // Check if user has already marked ANY dose for this reminder today as taken
+          final todayRecordsSnapshot = await _db
               .collection('medicineRecords')
               .where('medicineBoxId', isEqualTo: box.id)
               .where('reminderTimeId', isEqualTo: reminder.id)
-              .where('scheduledTime', isEqualTo: Timestamp.fromDate(scheduledTime))
-              .where('isTaken', isEqualTo: true)
-              .limit(1)
+              .where('scheduledTime', isGreaterThanOrEqualTo: Timestamp.fromDate(today))
+              .where('scheduledTime', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
               .get();
 
-          // If marked as taken, keep status as completed
-          if (recordSnapshot.docs.isNotEmpty) {
+          // Check if ANY record for today is taken
+          final hasTakenToday = todayRecordsSnapshot.docs.any((doc) {
+            final record = MedicineRecord.fromFirestore(doc);
+            return record.isTaken;
+          });
+
+          // If marked as taken, set status as completed
+          if (hasTakenToday) {
             if (reminder.status != 'completed') {
               needsUpdate = true;
               return ReminderTime(
@@ -602,31 +607,50 @@ class FirestoreService {
       final todayStart = DateTime(now.year, now.month, now.day);
       final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
       
-      // Find the most recent overdue/upcoming record for this box today
+      // Simplified query to avoid complex composite index
+      // Get all records for this medicine box today, filter in code
       final snapshot = await _db
           .collection('medicineRecords')
-          .where('boxId', isEqualTo: medicineBoxId)
-          .where('boxNumber', isEqualTo: boxNumber)
+          .where('medicineBoxId', isEqualTo: medicineBoxId)
           .where('scheduledTime', isGreaterThanOrEqualTo: todayStart)
           .where('scheduledTime', isLessThanOrEqualTo: todayEnd)
-          .where('isTaken', isEqualTo: false)
-          .where('isMissed', isEqualTo: false)
-          .orderBy('scheduledTime', descending: false)
-          .limit(1)
           .get();
       
-      if (snapshot.docs.isEmpty) {
+      print('📊 Found ${snapshot.docs.length} records today for this box');
+      
+      // Filter in code to find the right record
+      final validRecords = snapshot.docs.where((doc) {
+        final record = MedicineRecord.fromFirestore(doc);
+        return record.boxNumber == boxNumber && 
+               !record.isTaken && 
+               !record.isMissed;
+      }).toList();
+      
+      // Sort by scheduled time and get first
+      validRecords.sort((a, b) {
+        final recordA = MedicineRecord.fromFirestore(a);
+        final recordB = MedicineRecord.fromFirestore(b);
+        return recordA.scheduledTime.compareTo(recordB.scheduledTime);
+      });
+      
+      if (validRecords.isEmpty) {
         print('⚠️ No pending record found for box $boxNumber');
         return;
       }
       
-      final recordDoc = snapshot.docs.first;
+      final recordDoc = validRecords.first;
       final recordId = recordDoc.id;
+      final record = MedicineRecord.fromFirestore(recordDoc);
       
       print('✅ Found record to complete: $recordId');
+      print('   Medicine: ${record.medicineName}');
+      print('   Scheduled: ${record.scheduledTime}');
       
       // Mark as taken
       await markRecordAsTaken(recordId);
+      
+      // Update reminder statuses to reflect the change
+      await updateAllReminderStatuses();
       
       print('✅ Record auto-completed via IoT!');
     } catch (e) {

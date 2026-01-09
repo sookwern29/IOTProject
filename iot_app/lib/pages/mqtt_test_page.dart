@@ -52,7 +52,7 @@ class _MqttTestPageState extends State<MqttTestPage> {
       _addLog('✅ Found medicine box:');
       _addLog('   • Firestore ID: ${box.id}');
       _addLog('   • Device ID: ${box.deviceId}');
-      _addLog('   • Box Name: ${box.boxName}');
+      _addLog('   • Box Name: ${box.name}');
       _addLog('');
 
       // Step 2: Check Device in Firestore
