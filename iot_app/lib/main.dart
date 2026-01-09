@@ -14,14 +14,14 @@ import 'services/mqtt_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
+
   // Initialize notification service
   try {
     await NotificationService().initialize();
   } catch (e) {
     print('Error initializing notifications: $e');
   }
-  
+
   runApp(MedicineReminderApp());
 }
 
@@ -45,7 +45,9 @@ class MedicineReminderApp extends StatelessWidget {
         scaffoldBackgroundColor: Color(0xFFF5F7FA), // Light clinical background
         cardTheme: CardThemeData(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           color: Colors.white,
         ),
         appBarTheme: AppBarTheme(
@@ -91,10 +93,10 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     // Update statuses immediately when app starts
     _updateReminderStatuses();
-    
+
     // Initialize MQTT connection
     _initializeMqtt();
-    
+
     // Set up periodic updates every 5 minutes
     _statusUpdateTimer = Timer.periodic(Duration(minutes: 5), (_) {
       _updateReminderStatuses();
@@ -150,30 +152,21 @@ class _HomePageState extends State<HomePage> {
         selectedItemColor: Colors.teal,
         unselectedItemColor: Colors.grey,
         items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.today),
-            label: 'Today',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.today), label: 'Today'),
           BottomNavigationBarItem(
             icon: Icon(Icons.medication),
             label: 'Medicines',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.bluetooth),
+            icon: Icon(Icons.wifi_find),
             label: 'Devices',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.assessment),
             label: 'Reports',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bug_report),
-            label: 'Debug',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.science),
-            label: 'Test',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.bug_report), label: 'Debug'),
+          BottomNavigationBarItem(icon: Icon(Icons.science), label: 'Test'),
         ],
       ),
     );

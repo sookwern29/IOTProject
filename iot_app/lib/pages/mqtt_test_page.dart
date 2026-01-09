@@ -13,13 +13,16 @@ class MqttTestPage extends StatefulWidget {
 class _MqttTestPageState extends State<MqttTestPage> {
   final MqttService _mqttService = MqttService();
   final FirestoreService _firestoreService = FirestoreService();
-  
+
   List<String> _diagnosticLogs = [];
   bool _isRunning = false;
 
   void _addLog(String message) {
     setState(() {
-      _diagnosticLogs.insert(0, '[${DateTime.now().toString().substring(11, 19)}] $message');
+      _diagnosticLogs.insert(
+        0,
+        '[${DateTime.now().toString().substring(11, 19)}] $message',
+      );
       if (_diagnosticLogs.length > 50) {
         _diagnosticLogs.removeLast();
       }
@@ -28,7 +31,7 @@ class _MqttTestPageState extends State<MqttTestPage> {
 
   Future<void> _runFullDiagnostic() async {
     if (_isRunning) return;
-    
+
     setState(() {
       _isRunning = true;
       _diagnosticLogs.clear();
@@ -52,7 +55,7 @@ class _MqttTestPageState extends State<MqttTestPage> {
       _addLog('✅ Found medicine box:');
       _addLog('   • Firestore ID: ${box.id}');
       _addLog('   • Device ID: ${box.deviceId}');
-      _addLog('   • Box Name: ${box.boxName}');
+      _addLog('   • Box Name: ${box.name}');
       _addLog('');
 
       // Step 2: Check Device in Firestore
@@ -85,9 +88,9 @@ class _MqttTestPageState extends State<MqttTestPage> {
       // Step 3: Check ESP32 Status
       _addLog('📋 STEP 3: Checking ESP32 Device...');
       try {
-        final statusResponse = await http.get(
-          Uri.parse('http://$deviceIp/status'),
-        ).timeout(Duration(seconds: 5));
+        final statusResponse = await http
+            .get(Uri.parse('http://$deviceIp/status'))
+            .timeout(Duration(seconds: 5));
 
         if (statusResponse.statusCode == 200) {
           final statusData = jsonDecode(statusResponse.body);
@@ -106,7 +109,7 @@ class _MqttTestPageState extends State<MqttTestPage> {
           _addLog('📋 STEP 4: Comparing Medicine Box IDs...');
           _addLog('   • ESP32 medicineBoxId: "$esp32MedicineBoxId"');
           _addLog('   • Firestore Medicine Box ID: "$firestoreMedicineBoxId"');
-          
+
           if (esp32MedicineBoxId == null || esp32MedicineBoxId.isEmpty) {
             _addLog('❌ ERROR: ESP32 medicineBoxId is not set!');
             _addLog('   Solution: Click "Fix ESP32 ID" button below');
@@ -114,8 +117,12 @@ class _MqttTestPageState extends State<MqttTestPage> {
           } else if (esp32MedicineBoxId != firestoreMedicineBoxId) {
             _addLog('❌ ERROR: Medicine Box IDs DO NOT MATCH!');
             _addLog('   This is why Flutter is not receiving messages!');
-            _addLog('   ESP32 publishes to: medicinebox/$esp32MedicineBoxId/status');
-            _addLog('   Flutter subscribes to: medicinebox/$firestoreMedicineBoxId/status');
+            _addLog(
+              '   ESP32 publishes to: medicinebox/$esp32MedicineBoxId/status',
+            );
+            _addLog(
+              '   Flutter subscribes to: medicinebox/$firestoreMedicineBoxId/status',
+            );
             _addLog('   Solution: Click "Fix ESP32 ID" button below');
             _addLog('');
           } else {
@@ -125,19 +132,29 @@ class _MqttTestPageState extends State<MqttTestPage> {
 
           // Step 5: Check MQTT Topics
           _addLog('📋 STEP 5: Checking MQTT Topics...');
-          _addLog('   • ESP32 publishes to: medicinebox/${esp32MedicineBoxId ?? "NULL"}/status');
-          _addLog('   • Flutter subscribes to: medicinebox/$firestoreMedicineBoxId/status');
+          _addLog(
+            '   • ESP32 publishes to: medicinebox/${esp32MedicineBoxId ?? "NULL"}/status',
+          );
+          _addLog(
+            '   • Flutter subscribes to: medicinebox/$firestoreMedicineBoxId/status',
+          );
           _addLog('');
 
           // Step 6: Check MQTT Connection Status
           _addLog('📋 STEP 6: Checking MQTT Connections...');
-          _addLog('   • ESP32 MQTT Status: ${statusData['mqttConnected'] == true ? "✅ Connected" : "❌ Disconnected"}');
-          _addLog('   • Flutter MQTT Status: ${_mqttService.isConnected ? "✅ Connected" : "❌ Disconnected"}');
+          _addLog(
+            '   • ESP32 MQTT Status: ${statusData['mqttConnected'] == true ? "✅ Connected" : "❌ Disconnected"}',
+          );
+          _addLog(
+            '   • Flutter MQTT Status: ${_mqttService.isConnected ? "✅ Connected" : "❌ Disconnected"}',
+          );
           _addLog('');
 
           if (!_mqttService.isConnected) {
             _addLog('❌ WARNING: Flutter is not connected to MQTT broker!');
-            _addLog('   Solution: Restart the app or check broker connectivity');
+            _addLog(
+              '   Solution: Restart the app or check broker connectivity',
+            );
             _addLog('');
           }
 
@@ -149,27 +166,31 @@ class _MqttTestPageState extends State<MqttTestPage> {
 
           // Step 7: Summary
           _addLog('📋 SUMMARY:');
-          if (esp32MedicineBoxId == firestoreMedicineBoxId && 
-              _mqttService.isConnected && 
+          if (esp32MedicineBoxId == firestoreMedicineBoxId &&
+              _mqttService.isConnected &&
               statusData['mqttConnected'] == true) {
             _addLog('✅ ALL CHECKS PASSED!');
             _addLog('   If messages still don\'t appear:');
             _addLog('   1. Press ESP32 button');
-            _addLog('   2. Check ESP32 Serial Monitor for "MQTT published" message');
+            _addLog(
+              '   2. Check ESP32 Serial Monitor for "MQTT published" message',
+            );
             _addLog('   3. Check MQTT Debug tab for received messages');
           } else {
             _addLog('❌ ISSUES FOUND - Fix them first!');
           }
-
         } else {
-          _addLog('❌ ERROR: ESP32 returned status ${statusResponse.statusCode}');
+          _addLog(
+            '❌ ERROR: ESP32 returned status ${statusResponse.statusCode}',
+          );
         }
       } catch (e) {
         _addLog('❌ ERROR: Cannot reach ESP32 at $deviceIp');
         _addLog('   Error: $e');
-        _addLog('   Solution: Check if ESP32 is powered on and WiFi is connected');
+        _addLog(
+          '   Solution: Check if ESP32 is powered on and WiFi is connected',
+        );
       }
-
     } catch (e) {
       _addLog('❌ ERROR: $e');
     }
@@ -183,9 +204,9 @@ class _MqttTestPageState extends State<MqttTestPage> {
     try {
       final boxes = await _firestoreService.getMedicineBoxes().first;
       if (boxes.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No medicine boxes found')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('No medicine boxes found')));
         return;
       }
 
@@ -196,25 +217,25 @@ class _MqttTestPageState extends State<MqttTestPage> {
           .get();
 
       if (!deviceDoc.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Device not found')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Device not found')));
         return;
       }
 
       final ip = deviceDoc.data()?['ip'] as String?;
       if (ip == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Device IP not found')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Device IP not found')));
         return;
       }
 
       _addLog('🔧 Setting ESP32 medicineBoxId to: ${box.id}');
 
-      final response = await http.get(
-        Uri.parse('http://$ip/setmedicineboxid?id=${box.id}'),
-      ).timeout(Duration(seconds: 5));
+      final response = await http
+          .get(Uri.parse('http://$ip/setmedicineboxid?id=${box.id}'))
+          .timeout(Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         _addLog('✅ SUCCESS: ESP32 medicineBoxId updated!');
@@ -223,7 +244,7 @@ class _MqttTestPageState extends State<MqttTestPage> {
         _addLog('⚠️  IMPORTANT: Wait 5 seconds, then:');
         _addLog('   1. Press ESP32 button to trigger MQTT publish');
         _addLog('   2. Check MQTT Debug tab for messages');
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✅ ESP32 ID fixed! Press ESP32 button to test.'),
@@ -239,9 +260,9 @@ class _MqttTestPageState extends State<MqttTestPage> {
       }
     } catch (e) {
       _addLog('❌ ERROR: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -263,14 +284,21 @@ class _MqttTestPageState extends State<MqttTestPage> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _isRunning ? null : _runFullDiagnostic,
-                    icon: _isRunning 
+                    icon: _isRunning
                         ? SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : Icon(Icons.play_arrow),
-                    label: Text(_isRunning ? 'Running Diagnostic...' : 'Run Full Diagnostic'),
+                    label: Text(
+                      _isRunning
+                          ? 'Running Diagnostic...'
+                          : 'Run Full Diagnostic',
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -320,11 +348,15 @@ class _MqttTestPageState extends State<MqttTestPage> {
                     itemBuilder: (context, index) {
                       final log = _diagnosticLogs[index];
                       Color textColor = Colors.black87;
-                      
-                      if (log.contains('✅')) textColor = Colors.green[700]!;
-                      else if (log.contains('❌')) textColor = Colors.red[700]!;
-                      else if (log.contains('⚠️')) textColor = Colors.orange[700]!;
-                      else if (log.contains('📋')) textColor = Colors.blue[700]!;
+
+                      if (log.contains('✅'))
+                        textColor = Colors.green[700]!;
+                      else if (log.contains('❌'))
+                        textColor = Colors.red[700]!;
+                      else if (log.contains('⚠️'))
+                        textColor = Colors.orange[700]!;
+                      else if (log.contains('📋'))
+                        textColor = Colors.blue[700]!;
                       else if (log.contains('🔍') || log.contains('🏁')) {
                         textColor = Colors.purple[700]!;
                       }
@@ -337,8 +369,9 @@ class _MqttTestPageState extends State<MqttTestPage> {
                             fontFamily: 'monospace',
                             fontSize: 13,
                             color: textColor,
-                            fontWeight: log.contains('ERROR') || log.contains('STEP') 
-                                ? FontWeight.bold 
+                            fontWeight:
+                                log.contains('ERROR') || log.contains('STEP')
+                                ? FontWeight.bold
                                 : FontWeight.normal,
                           ),
                         ),
