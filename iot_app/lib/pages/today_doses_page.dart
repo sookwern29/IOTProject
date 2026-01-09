@@ -363,10 +363,10 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
                         icon: Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
                         onPressed: () => _markAsTaken(record.id),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
-                        onPressed: () => _markAsMissed(record.id),
-                      ),
+                      // IconButton(
+                      //   icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
+                      //   onPressed: () => _markAsMissed(record.id),
+                      // ),
                     ],
                   )
                 : Icon(
