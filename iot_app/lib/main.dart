@@ -5,9 +5,12 @@ import 'pages/today_doses_page.dart';
 import 'pages/medicine_management_page.dart';
 import 'pages/device_scanner_page.dart';
 import 'pages/adherence_report_page.dart';
+import 'pages/mqtt_debug_page.dart';
+import 'pages/mqtt_test_page.dart';
 import 'services/firestore_service.dart';
 import 'services/notification_service.dart';
 import 'services/mqtt_service.dart';
+import 'services/auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +27,8 @@ void main() async {
 }
 
 class MedicineReminderApp extends StatelessWidget {
+  final AuthService _authService = AuthService();
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -61,7 +66,22 @@ class MedicineReminderApp extends StatelessWidget {
           unselectedItemColor: Colors.grey,
         ),
       ),
-      home: HomePage(),
+      home: StreamBuilder(
+        stream: _authService.authStateChanges,
+        builder: (context, snapshot) {
+          // Show loading while checking auth state
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+
+          // Show auth page if not logged in, otherwise show home page
+          if (snapshot.hasData) {
+            return HomePage();
+          } else {
+            return AuthPage();
+          }
+        },
+      ),
     );
   }
 }
@@ -82,6 +102,8 @@ class _HomePageState extends State<HomePage> {
     MedicineManagementPage(),
     DeviceScannerPage(),
     AdherenceReportPage(),
+    MqttDebugPage(),
+    MqttTestPage(),
   ];
 
   @override
@@ -161,6 +183,8 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.assessment),
             label: 'Reports',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.bug_report), label: 'Debug'),
+          BottomNavigationBarItem(icon: Icon(Icons.science), label: 'Test'),
         ],
       ),
     );
