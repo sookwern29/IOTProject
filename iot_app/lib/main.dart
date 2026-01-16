@@ -5,8 +5,6 @@ import 'pages/today_doses_page.dart';
 import 'pages/medicine_management_page.dart';
 import 'pages/device_scanner_page.dart';
 import 'pages/adherence_report_page.dart';
-import 'pages/mqtt_debug_page.dart';
-import 'pages/mqtt_test_page.dart';
 import 'services/firestore_service.dart';
 import 'services/notification_service.dart';
 import 'services/mqtt_service.dart';
@@ -84,8 +82,6 @@ class _HomePageState extends State<HomePage> {
     MedicineManagementPage(),
     DeviceScannerPage(),
     AdherenceReportPage(),
-    MqttDebugPage(),
-    MqttTestPage(),
   ];
 
   @override
@@ -165,8 +161,6 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.assessment),
             label: 'Reports',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.bug_report), label: 'Debug'),
-          BottomNavigationBarItem(icon: Icon(Icons.science), label: 'Test'),
         ],
       ),
     );
