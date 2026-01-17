@@ -5,6 +5,7 @@ import 'pages/medicine_management_page.dart';
 import 'pages/device_scanner_page.dart';
 import 'pages/adherence_report_page.dart';
 import 'pages/auth_page.dart';
+import 'pages/profile_page.dart';
 import 'services/mongodb_service.dart';
 import 'services/notification_service.dart';
 import 'services/auth_service.dart';
@@ -40,7 +41,11 @@ class _MedicineReminderAppState extends State<MedicineReminderApp> {
   }
 
   Future<void> _checkAuthStatus() async {
-    await Future.delayed(Duration(milliseconds: 100)); // Small delay to ensure initialization
+    // Initialize auth - restore from SharedPreferences
+    final restored = await _authService.initializeAuth();
+
+    await Future.delayed(Duration(milliseconds: 100));
+
     if (mounted) {
       setState(() {
         _isAuthenticated = _authService.isAuthenticated;
@@ -50,7 +55,9 @@ class _MedicineReminderAppState extends State<MedicineReminderApp> {
   }
 
   void _onAuthChanged() {
-    print('🔄 Auth state changed. isAuthenticated: ${_authService.isAuthenticated}');
+    print(
+      '🔄 Auth state changed. isAuthenticated: ${_authService.isAuthenticated}',
+    );
     if (mounted) {
       setState(() {
         _isAuthenticated = _authService.isAuthenticated;
@@ -98,8 +105,8 @@ class _MedicineReminderAppState extends State<MedicineReminderApp> {
       home: _isLoading
           ? Scaffold(body: Center(child: CircularProgressIndicator()))
           : _isAuthenticated
-              ? HomePage()
-              : AuthPage(onAuthSuccess: _onAuthChanged),
+          ? HomePage()
+          : AuthPage(onAuthSuccess: _onAuthChanged),
     );
   }
 }
@@ -119,6 +126,7 @@ class _HomePageState extends State<HomePage> {
     MedicineManagementPage(),
     DeviceScannerPage(),
     AdherenceReportPage(),
+    ProfilePage(),
   ];
 
   @override
@@ -178,6 +186,7 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.assessment),
             label: 'Reports',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );

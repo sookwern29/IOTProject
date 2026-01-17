@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import 'auth_page.dart';
 
 class ProfilePage extends StatefulWidget {
   @override
@@ -8,61 +9,25 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final AuthService _authService = AuthService();
-  Map<String, dynamic>? _userProfile;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserProfile();
-  }
-
-  Future<void> _loadUserProfile() async {
-    final userId = _authService.currentUserId;
-    if (userId != null) {
-      final profile = await _authService.getUserProfile(userId);
-      setState(() {
-        _userProfile = profile;
-        _isLoading = false;
-      });
-    } else {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
+  bool _isLoading = false;
 
   Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Logout'),
-        content: Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text('Logout', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+    try {
+      setState(() => _isLoading = true);
+      await _authService.logout();
 
-    if (confirm == true) {
-      try {
-        await _authService.logout();
-        // Navigation handled by auth state listener
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error logging out: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/auth');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error logging out: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -70,139 +35,175 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Profile')),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  SizedBox(height: 20),
-                  // Profile Avatar
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: Theme.of(context).primaryColor,
-                    child: Icon(Icons.person, size: 60, color: Colors.white),
-                  ),
-                  SizedBox(height: 20),
+      appBar: AppBar(title: Text('Profile'), centerTitle: true),
+      body: _authService.isAuthenticated
+          ? _buildProfileContent(context)
+          : _buildNotAuthenticatedContent(context),
+    );
+  }
 
-                  // User Info Card
-                  Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          ListTile(
-                            leading: Icon(
-                              Icons.person_outline,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                            title: Text('Full Name'),
-                            subtitle: Text(
-                              _userProfile?['fullName'] ??
-                                  _authService.currentUserName ??
-                                  'N/A',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Divider(),
-                          ListTile(
-                            leading: Icon(
-                              Icons.email_outlined,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                            title: Text('Email'),
-                            subtitle: Text(
-                              _authService.currentUserEmail ?? 'N/A',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          Divider(),
-                          ListTile(
-                            leading: Icon(
-                              Icons.account_circle_outlined,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                            title: Text('User ID'),
-                            subtitle: Text(
-                              _authService.currentUserId ?? 'N/A',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 20),
-
-                  // Actions Card
-                  Card(
-                    child: Column(
-                      children: [
-                        ListTile(
-                          leading: Icon(Icons.lock_outline, color: Colors.blue),
-                          title: Text('Change Password'),
-                          trailing: Icon(Icons.arrow_forward_ios, size: 16),
-                          onTap: () async {
-                            final email = _authService.currentUserEmail;
-                            if (email != null) {
-                              try {
-                                await _authService.resetPassword(email);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Password reset email sent to $email',
-                                    ),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                        ),
-                        Divider(height: 1),
-                        ListTile(
-                          leading: Icon(Icons.logout, color: Colors.red),
-                          title: Text(
-                            'Logout',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                          trailing: Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                            color: Colors.red,
-                          ),
-                          onTap: _logout,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 20),
-
-                  // App Info
-                  Text(
-                    'Smart Medicine Box v1.0.0',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
+  Widget _buildProfileContent(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          SizedBox(height: 40),
+          // User Avatar
+          CircleAvatar(
+            radius: 60,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            child: Text(
+              (_authService.currentUserName?.isNotEmpty ?? false)
+                  ? _authService.currentUserName![0].toUpperCase()
+                  : '?',
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
+          ),
+          SizedBox(height: 30),
+
+          // User Info Card
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Account Information',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 20),
+                    _buildInfoRow(
+                      icon: Icons.person,
+                      label: 'Full Name',
+                      value: _authService.currentUserName ?? 'Not provided',
+                      context: context,
+                    ),
+                    SizedBox(height: 16),
+                    _buildInfoRow(
+                      icon: Icons.email,
+                      label: 'Email',
+                      value: _authService.currentUserEmail ?? 'Not provided',
+                      context: context,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 40),
+
+          // Logout Button
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _logout,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: _isLoading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation(Colors.white),
+                        ),
+                      )
+                    : Icon(Icons.logout),
+                label: Text(
+                  _isLoading ? 'Logging out...' : 'Logout',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotAuthenticatedContent(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_off, size: 80, color: Colors.grey),
+          SizedBox(height: 20),
+          Text(
+            'Not Logged In',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 10),
+          Text(
+            'Please login to view your profile',
+            style: TextStyle(color: Colors.grey),
+          ),
+          SizedBox(height: 30),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => AuthPage()),
+              );
+            },
+            child: Text('Go to Login'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required BuildContext context,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 24, color: Theme.of(context).colorScheme.primary),
+        SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -13,12 +13,47 @@ class TodayDosesPage extends StatefulWidget {
 class _TodayDosesPageState extends State<TodayDosesPage> {
   final MongoDBService _mongoDBService = MongoDBService();
   final DeviceService _deviceService = DeviceService();
+  final StreamController<List<MedicineRecord>> _dosesStreamController =
+      StreamController<List<MedicineRecord>>.broadcast();
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     // Update all reminder statuses when page loads
     _updateReminderStatuses();
+    // Start periodic refresh
+    _startPeriodicRefresh();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _dosesStreamController.close();
+    super.dispose();
+  }
+
+  void _startPeriodicRefresh() {
+    // Load initial data
+    _refreshDoses();
+    // Refresh every 5 seconds
+    _refreshTimer = Timer.periodic(Duration(seconds: 5), (_) {
+      _refreshDoses();
+    });
+  }
+
+  Future<void> _refreshDoses() async {
+    try {
+      final doses = await _mongoDBService.getTodayDoses();
+      if (!_dosesStreamController.isClosed) {
+        _dosesStreamController.add(doses);
+      }
+    } catch (e) {
+      print('Error refreshing doses: $e');
+      if (!_dosesStreamController.isClosed) {
+        _dosesStreamController.addError(e);
+      }
+    }
   }
 
   Future<void> _updateReminderStatuses() async {
@@ -35,7 +70,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     return Scaffold(
       appBar: AppBar(title: Text('Today\'s Doses')),
       body: StreamBuilder<List<MedicineRecord>>(
-        stream: _mongoDBService.getTodayDosesFromBoxes(),
+        stream: _dosesStreamController.stream,
         builder: (context, snapshot) {
           print('📡 StreamBuilder state: ${snapshot.connectionState}');
           print(
@@ -72,6 +107,14 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
           final records = snapshot.data!;
           print('✅ Displaying ${records.length} records');
+
+          // Debug: Print each record's status
+          for (var record in records) {
+            print(
+              '📊 Record: ${record.medicineName}, status="${record.status}", isTaken=${record.isTaken}, isMissed=${record.isMissed}',
+            );
+          }
+
           final now = DateTime.now();
           final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
@@ -251,6 +294,11 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     return Card(
       margin: EdgeInsets.only(bottom: 12),
       elevation: 2,
+      color: isCompleted
+          ? Color(0xFFE8F5E9) // Light green background for completed
+          : isMissed
+          ? Color(0xFFFBE9E7) // Light red background for missed
+          : null,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         contentPadding: EdgeInsets.all(16),
@@ -349,18 +397,25 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
   Future<void> _markAsTaken(MedicineRecord record) async {
     try {
+      print('💊 Marking record ${record.id} as taken');
       await _mongoDBService.markRecordAsTaken(record.id);
 
       // Update reminder statuses after marking as taken
       await _updateReminderStatuses();
 
+      // Immediately refresh the UI
+      print('✅ Record marked as taken, refreshing immediately');
+      await _refreshDoses();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Dose marked as taken!'),
+          content: Text('✅ ${record.medicineName} marked as taken!'),
           backgroundColor: Color(0xFF66BB6A),
+          duration: Duration(seconds: 2),
         ),
       );
     } catch (e) {
+      print('❌ Error marking as taken: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
@@ -376,6 +431,9 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
       // Update reminder statuses after marking as missed
       await _updateReminderStatuses();
+
+      // Immediately refresh the UI
+      await _refreshDoses();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -235,7 +235,13 @@ class MongoDBService {
   // ==================== SPECIFIC QUERIES ====================
 
   Future<List<MedicineRecord>> getTodayDoses() async {
+    final now = DateTime.now();
     print('📅 getTodayDoses() called');
+    print('🕐 Client time: ${now.toIso8601String()}');
+    print(
+      '📆 Today date: ${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+    );
+
     List<MedicineRecord> apiDoses = [];
 
     try {
@@ -249,36 +255,37 @@ class MongoDBService {
         final List<dynamic> data = json.decode(response.body);
         apiDoses = data.map((item) => MedicineRecord.fromJson(item)).toList();
         print('✅ API returned ${apiDoses.length} doses');
+
+        // Debug: Show what API returned
+        for (var dose in apiDoses) {
+          print(
+            '  📊 ${dose.medicineName}: scheduled=${dose.scheduledTime.toIso8601String()}, status=${dose.status}',
+          );
+        }
+
+        // If API has real records, use them (they have actual DB IDs for updates)
+        if (apiDoses.isNotEmpty) {
+          print('📊 Using API records with actual DB IDs');
+          return apiDoses
+            ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+        }
       }
     } catch (e) {
       print('⚠️ Error fetching today doses from API: $e');
     }
 
-    // Always run fallback to ensure reminder-based doses appear
-    print('🔄 Generating doses from reminders (fallback/merge)');
-    List<MedicineRecord> generated = [];
+    // Fallback: generate from reminders only if API returned nothing
+    print('🔄 API empty, generating doses from reminders as fallback');
     try {
-      generated = await _generateTodayDosesFromReminders();
+      final generated = await _generateTodayDosesFromReminders();
       print('✅ Generated ${generated.length} doses from reminders');
+      return generated
+        ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
     } catch (e) {
       print('❌ Error generating today doses from reminders: $e');
     }
 
-    // Merge API + generated, deduplicating by box+reminder+scheduledTime
-    final merged = <String, MedicineRecord>{};
-    String keyOf(MedicineRecord r) =>
-        '${r.medicineBoxId}_${r.reminderTimeId}_${r.scheduledTime.toIso8601String()}';
-
-    for (final r in apiDoses) {
-      merged[keyOf(r)] = r;
-    }
-    for (final r in generated) {
-      merged.putIfAbsent(keyOf(r), () => r);
-    }
-
-    print('📊 Returning ${merged.length} merged doses');
-    return merged.values.toList()
-      ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+    return [];
   }
 
   /// Build today's doses from medicine box reminders when the API endpoint is missing
@@ -332,6 +339,7 @@ class MongoDBService {
           status: 'upcoming',
         );
         doses.add(dose);
+
         print(
           '    ✅ Added dose: ${box.name} at ${reminder.hour}:${reminder.minute}',
         );
@@ -405,6 +413,46 @@ class MongoDBService {
 
   Future<void> markRecordAsTaken(String recordId) async {
     try {
+      print('📤 Marking record $recordId as taken');
+
+      // Check if this is a generated dose (ID starts with 'dose_')
+      if (recordId.startsWith('dose_')) {
+        print('🔄 Generated dose detected, marking reminder as taken in DB');
+
+        // Parse the generated ID: dose_boxId_reminderId_date
+        final parts = recordId.split('_');
+        if (parts.length >= 3) {
+          final boxId = parts[1];
+          final reminderId = parts[2];
+
+          print('📋 Extracted: boxId=$boxId, reminderId=$reminderId');
+
+          // Update the reminder status directly
+          final response = await http.post(
+            Uri.parse('$_baseUrl/markReminderAsTaken'),
+            headers: _headers,
+            body: json.encode({
+              'medicineBoxId': boxId,
+              'reminderId': reminderId,
+              'takenTime': DateTime.now().toIso8601String(),
+              'userId': _userId,
+            }),
+          );
+
+          print('📥 Response status: ${response.statusCode}');
+          print('📥 Response body: ${response.body}');
+
+          if (response.statusCode == 200) {
+            print('✅ Reminder marked as taken successfully');
+            return;
+          }
+        }
+        print(
+          '⚠️ Could not parse generated ID, trying standard endpoint anyway',
+        );
+      }
+
+      // Standard approach for real DB records
       final response = await http.post(
         Uri.parse('$_baseUrl/updateRecord'),
         headers: _headers,
@@ -415,17 +463,59 @@ class MongoDBService {
         }),
       );
 
+      print('📥 Response status: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
       if (response.statusCode != 200) {
-        throw Exception('Failed to mark record as taken');
+        throw Exception('Failed to mark record as taken: ${response.body}');
       }
+
+      print('✅ Record marked as taken successfully');
     } catch (e) {
-      print('Error marking record as taken: $e');
+      print('❌ Error marking record as taken: $e');
       rethrow;
     }
   }
 
   Future<void> markRecordAsMissed(String recordId) async {
     try {
+      print('📤 Marking record $recordId as missed');
+
+      // Check if this is a generated dose (ID starts with 'dose_')
+      if (recordId.startsWith('dose_')) {
+        print('🔄 Generated dose detected, marking reminder as missed in DB');
+
+        // Parse the generated ID: dose_boxId_reminderId_date
+        final parts = recordId.split('_');
+        if (parts.length >= 3) {
+          final boxId = parts[1];
+          final reminderId = parts[2];
+
+          print('📋 Extracted: boxId=$boxId, reminderId=$reminderId');
+
+          // Update the reminder status directly
+          final response = await http.post(
+            Uri.parse('$_baseUrl/markReminderAsMissed'),
+            headers: _headers,
+            body: json.encode({
+              'medicineBoxId': boxId,
+              'reminderId': reminderId,
+              'userId': _userId,
+            }),
+          );
+
+          print('📥 Response status: ${response.statusCode}');
+          if (response.statusCode == 200) {
+            print('✅ Reminder marked as missed successfully');
+            return;
+          }
+        }
+        print(
+          '⚠️ Could not parse generated ID, trying standard endpoint anyway',
+        );
+      }
+
+      // Standard approach for real DB records
       final response = await http.post(
         Uri.parse('$_baseUrl/updateRecord'),
         headers: _headers,
@@ -435,8 +525,10 @@ class MongoDBService {
       if (response.statusCode != 200) {
         throw Exception('Failed to mark record as missed');
       }
+
+      print('✅ Record marked as missed successfully');
     } catch (e) {
-      print('Error marking record as missed: $e');
+      print('❌ Error marking record as missed: $e');
       rethrow;
     }
   }
@@ -541,6 +633,7 @@ class MongoDBService {
           'deviceId': deviceId,
           'ip': ip,
           'name': name,
+          'userId': _userId, // Add current user ID
           'lastSeen': DateTime.now().toIso8601String(),
         }),
       );
@@ -552,6 +645,25 @@ class MongoDBService {
       print('Error saving device: $e');
       rethrow;
     }
+  }
+
+  /// Get devices for current user only
+  Future<List<Map<String, dynamic>>> getUserDevices() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/getUserDevices'),
+        headers: _headers,
+        body: json.encode({'userId': _userId}),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      print('Error fetching user devices: $e');
+    }
+    return [];
   }
 
   Future<String?> getDeviceIp(String deviceId) async {
@@ -570,5 +682,62 @@ class MongoDBService {
       print('Error fetching device IP: $e');
     }
     return null;
+  }
+
+  /// Direct reminder update methods for when generating doses from reminders
+  Future<void> markReminderAsTaken(
+    String medicineBoxId,
+    String reminderId,
+  ) async {
+    try {
+      print('📤 Marking reminder $reminderId in box $medicineBoxId as taken');
+
+      // Try to find and update the box reminder
+      final response = await http.post(
+        Uri.parse('$_baseUrl/updateMedicineBoxReminder'),
+        headers: _headers,
+        body: json.encode({
+          'medicineBoxId': medicineBoxId,
+          'reminderId': reminderId,
+          'status': 'completed',
+          'takenTime': DateTime.now().toIso8601String(),
+          'userId': _userId,
+        }),
+      );
+
+      print('📥 Response status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        print('✅ Reminder marked as taken successfully');
+      }
+    } catch (e) {
+      print('❌ Error marking reminder as taken: $e');
+    }
+  }
+
+  Future<void> markReminderAsMissed(
+    String medicineBoxId,
+    String reminderId,
+  ) async {
+    try {
+      print('📤 Marking reminder $reminderId in box $medicineBoxId as missed');
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/updateMedicineBoxReminder'),
+        headers: _headers,
+        body: json.encode({
+          'medicineBoxId': medicineBoxId,
+          'reminderId': reminderId,
+          'status': 'missed',
+          'userId': _userId,
+        }),
+      );
+
+      print('📥 Response status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        print('✅ Reminder marked as missed successfully');
+      }
+    } catch (e) {
+      print('❌ Error marking reminder as missed: $e');
+    }
   }
 }
