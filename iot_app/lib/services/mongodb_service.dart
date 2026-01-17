@@ -8,11 +8,12 @@ import 'auth_service.dart';
 /// MongoDB Service for Medicine Box App
 /// Replaces FirestoreService with MongoDB Atlas backend
 class MongoDBService {
-  static const String _baseUrl = 'https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app';
+  static const String _baseUrl =
+      'https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app';
   final AuthService _authService = AuthService();
 
   String get _userId => _authService.currentUserId ?? 'user123';
-  
+
   Map<String, String> get _headers {
     final headers = {'Content-Type': 'application/json'};
     // Note: Add token to headers when your MongoDB API supports authentication
@@ -20,24 +21,24 @@ class MongoDBService {
   }
 
   // ==================== MEDICINE BOX CRUD ====================
-  
+
   Future<MedicineBox> addMedicineBox(MedicineBox box) async {
     print('📤 Creating medicine box');
     print('📦 Box data: ${json.encode(box.toJson())}');
-    
+
     final response = await http.post(
       Uri.parse('$_baseUrl/medicineBoxes'),
       headers: _headers,
       body: json.encode(box.toJson()),
     );
-    
+
     print('📥 Create response status: ${response.statusCode}');
     print('📥 Create response body: ${response.body}');
-    
+
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to add medicine box: ${response.body}');
     }
-    
+
     // Return the box with the MongoDB-assigned ID
     final responseData = json.decode(response.body);
     return MedicineBox.fromJson(responseData);
@@ -48,16 +49,16 @@ class MongoDBService {
     print('📤 Updating medicine box ${box.id}');
     print('📦 Box data: ${json.encode(boxJson)}');
     print('🔔 Reminders count: ${box.reminders.length}');
-    
+
     final response = await http.put(
       Uri.parse('$_baseUrl/medicineBoxes/${box.id}'),
       headers: _headers,
       body: json.encode(boxJson),
     );
-    
+
     print('📥 Response status: ${response.statusCode}');
     print('📥 Response body: ${response.body}');
-    
+
     if (response.statusCode != 200) {
       throw Exception('Failed to update medicine box: ${response.body}');
     }
@@ -68,7 +69,7 @@ class MongoDBService {
       Uri.parse('$_baseUrl/medicineBoxes/$boxId'),
       headers: _headers,
     );
-    
+
     if (response.statusCode != 200) {
       throw Exception('Failed to delete medicine box: ${response.body}');
     }
@@ -82,7 +83,7 @@ class MongoDBService {
           Uri.parse('$_baseUrl/medicineBoxes'),
           headers: _headers,
         );
-        
+
         if (response.statusCode == 200) {
           final List<dynamic> data = json.decode(response.body);
           yield data.map((item) => MedicineBox.fromJson(item)).toList();
@@ -93,7 +94,7 @@ class MongoDBService {
         print('Error fetching medicine boxes: $e');
         yield [];
       }
-      
+
       await Future.delayed(Duration(seconds: 5)); // Poll every 5 seconds
     }
   }
@@ -104,7 +105,7 @@ class MongoDBService {
         Uri.parse('$_baseUrl/medicineBoxes'),
         headers: _headers,
       );
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.map((item) => MedicineBox.fromJson(item)).toList();
@@ -118,17 +119,17 @@ class MongoDBService {
   Future<MedicineBox?> getMedicineBox(String boxId) async {
     try {
       print('🔍 Fetching medicine box with ID: $boxId');
-      
+
       // Since GET /medicineBoxes/{id} endpoint doesn't exist,
       // we fetch all boxes and find the one we need
       final boxes = await getMedicineBoxesList();
       print('📦 Total boxes in database: ${boxes.length}');
-      
+
       final box = boxes.firstWhere(
         (b) => b.id == boxId,
         orElse: () => throw Exception('Box not found'),
       );
-      
+
       print('✅ Box found: ${box.name}, reminders: ${box.reminders.length}');
       return box;
     } catch (e) {
@@ -162,7 +163,7 @@ class MongoDBService {
   }
 
   // ==================== MEDICINE RECORDS CRUD ====================
-  
+
   Future<void> createRecord(MedicineRecord record) async {
     final response = await http.post(
       Uri.parse('$_baseUrl/createRecord'),
@@ -179,7 +180,7 @@ class MongoDBService {
         'userId': _userId,
       }),
     );
-    
+
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to create record: ${response.body}');
     }
@@ -195,7 +196,7 @@ class MongoDBService {
         'takenTime': record.takenTime?.toIso8601String(),
       }),
     );
-    
+
     if (response.statusCode != 200) {
       throw Exception('Failed to update record: ${response.body}');
     }
@@ -207,7 +208,7 @@ class MongoDBService {
       headers: _headers,
       body: json.encode({'recordId': recordId}),
     );
-    
+
     if (response.statusCode != 200) {
       throw Exception('Failed to delete record: ${response.body}');
     }
@@ -220,7 +221,7 @@ class MongoDBService {
         headers: _headers,
         body: json.encode({'deviceId': deviceId ?? ''}),
       );
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.map((item) => MedicineRecord.fromJson(item)).toList();
@@ -232,22 +233,127 @@ class MongoDBService {
   }
 
   // ==================== SPECIFIC QUERIES ====================
-  
+
   Future<List<MedicineRecord>> getTodayDoses() async {
+    print('📅 getTodayDoses() called');
+    List<MedicineRecord> apiDoses = [];
+
     try {
       final response = await http.get(
         Uri.parse('$_baseUrl/doses/today'),
         headers: _headers,
       );
-      
+
+      print('📥 /doses/today response: ${response.statusCode}');
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((item) => MedicineRecord.fromJson(item)).toList();
+        apiDoses = data.map((item) => MedicineRecord.fromJson(item)).toList();
+        print('✅ API returned ${apiDoses.length} doses');
       }
     } catch (e) {
-      print('Error fetching today doses: $e');
+      print('⚠️ Error fetching today doses from API: $e');
     }
-    return [];
+
+    // Always run fallback to ensure reminder-based doses appear
+    print('🔄 Generating doses from reminders (fallback/merge)');
+    List<MedicineRecord> generated = [];
+    try {
+      generated = await _generateTodayDosesFromReminders();
+      print('✅ Generated ${generated.length} doses from reminders');
+    } catch (e) {
+      print('❌ Error generating today doses from reminders: $e');
+    }
+
+    // Merge API + generated, deduplicating by box+reminder+scheduledTime
+    final merged = <String, MedicineRecord>{};
+    String keyOf(MedicineRecord r) =>
+        '${r.medicineBoxId}_${r.reminderTimeId}_${r.scheduledTime.toIso8601String()}';
+
+    for (final r in apiDoses) {
+      merged[keyOf(r)] = r;
+    }
+    for (final r in generated) {
+      merged.putIfAbsent(keyOf(r), () => r);
+    }
+
+    print('📊 Returning ${merged.length} merged doses');
+    return merged.values.toList()
+      ..sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+  }
+
+  /// Build today's doses from medicine box reminders when the API endpoint is missing
+  Future<List<MedicineRecord>> _generateTodayDosesFromReminders() async {
+    final doses = <MedicineRecord>[];
+    final now = DateTime.now();
+    final todayWeekday = now.weekday % 7; // 0=Sun,1=Mon,...6=Sat
+
+    print(
+      '🗓️ Today is weekday: $todayWeekday (${_weekdayName(todayWeekday)})',
+    );
+
+    final boxes = await getMedicineBoxesList();
+    print('📦 Found ${boxes.length} medicine boxes');
+
+    for (final box in boxes) {
+      print('🔍 Checking box: ${box.name} (${box.reminders.length} reminders)');
+      for (final reminder in box.reminders) {
+        print(
+          '  ⏰ Reminder: ${reminder.hour}:${reminder.minute}, enabled=${reminder.isEnabled}, days=${reminder.daysOfWeek}',
+        );
+
+        if (!reminder.isEnabled) {
+          print('    ❌ Skipped: not enabled');
+          continue;
+        }
+        if (!reminder.daysOfWeek.contains(todayWeekday)) {
+          print('    ❌ Skipped: today not in schedule');
+          continue;
+        }
+
+        final scheduled = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          reminder.hour,
+          reminder.minute,
+        );
+
+        final dose = MedicineRecord(
+          id: 'dose_${box.id}_${reminder.id}_${now.toIso8601String().split('T').first}',
+          medicineBoxId: box.id,
+          medicineName: box.name,
+          boxNumber: box.boxNumber,
+          medicineType: box.medicineType,
+          deviceId: box.deviceId,
+          reminderTimeId: reminder.id,
+          reminderHour: reminder.hour,
+          reminderMinute: reminder.minute,
+          scheduledTime: scheduled,
+          status: 'upcoming',
+        );
+        doses.add(dose);
+        print(
+          '    ✅ Added dose: ${box.name} at ${reminder.hour}:${reminder.minute}',
+        );
+      }
+    }
+
+    doses.sort((a, b) => a.scheduledTime.compareTo(b.scheduledTime));
+    print('📊 Total doses generated: ${doses.length}');
+    return doses;
+  }
+
+  String _weekdayName(int day) {
+    const names = [
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ];
+    return names[day];
   }
 
   Stream<List<MedicineRecord>> getTodayDosesFromBoxes() async* {
@@ -258,7 +364,10 @@ class MongoDBService {
     }
   }
 
-  Future<List<MedicineRecord>> getRecordsInRange(DateTime start, DateTime end) async {
+  Future<List<MedicineRecord>> getRecordsInRange(
+    DateTime start,
+    DateTime end,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/getRecordsInRange'),
@@ -269,7 +378,7 @@ class MongoDBService {
           'userId': _userId,
         }),
       );
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.map((item) => MedicineRecord.fromJson(item)).toList();
@@ -280,15 +389,20 @@ class MongoDBService {
     return [];
   }
 
-  Stream<List<MedicineRecord>> getRecordsInRangeStream(DateTime start, DateTime end) async* {
+  Stream<List<MedicineRecord>> getRecordsInRangeStream(
+    DateTime start,
+    DateTime end,
+  ) async* {
     while (true) {
       yield await getRecordsInRange(start, end);
-      await Future.delayed(Duration(seconds: 10)); // Less frequent polling for reports
+      await Future.delayed(
+        Duration(seconds: 10),
+      ); // Less frequent polling for reports
     }
   }
 
   // ==================== RECORD STATUS UPDATES ====================
-  
+
   Future<void> markRecordAsTaken(String recordId) async {
     try {
       final response = await http.post(
@@ -300,7 +414,7 @@ class MongoDBService {
           'takenTime': DateTime.now().toIso8601String(),
         }),
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to mark record as taken');
       }
@@ -315,12 +429,9 @@ class MongoDBService {
       final response = await http.post(
         Uri.parse('$_baseUrl/updateRecord'),
         headers: _headers,
-        body: json.encode({
-          'recordId': recordId,
-          'status': 'missed',
-        }),
+        body: json.encode({'recordId': recordId, 'status': 'missed'}),
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to mark record as missed');
       }
@@ -330,17 +441,17 @@ class MongoDBService {
     }
   }
 
-  Future<void> autoCompleteRecordFromDevice(String deviceId, int boxNumber) async {
+  Future<void> autoCompleteRecordFromDevice(
+    String deviceId,
+    int boxNumber,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/autoCompleteRecord'),
         headers: _headers,
-        body: json.encode({
-          'deviceId': deviceId,
-          'boxNumber': boxNumber,
-        }),
+        body: json.encode({'deviceId': deviceId, 'boxNumber': boxNumber}),
       );
-      
+
       if (response.statusCode != 200) {
         print('Failed to auto-complete record: ${response.body}');
       }
@@ -350,8 +461,11 @@ class MongoDBService {
   }
 
   // ==================== BULK OPERATIONS ====================
-  
-  Future<void> deleteFutureRecordsForReminder(String medicineBoxId, String reminderId) async {
+
+  Future<void> deleteFutureRecordsForReminder(
+    String medicineBoxId,
+    String reminderId,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/deleteFutureRecords'),
@@ -361,7 +475,7 @@ class MongoDBService {
           'reminderId': reminderId,
         }),
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to delete future records');
       }
@@ -371,7 +485,10 @@ class MongoDBService {
     }
   }
 
-  Future<void> generateRecordsForReminder(MedicineBox box, ReminderTime reminder) async {
+  Future<void> generateRecordsForReminder(
+    MedicineBox box,
+    ReminderTime reminder,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/generateRecords'),
@@ -392,7 +509,7 @@ class MongoDBService {
           'userId': _userId,
         }),
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to generate records');
       }
@@ -401,7 +518,7 @@ class MongoDBService {
       rethrow;
     }
   }
-  
+
   // Alias method for backward compatibility
   Future<void> generateRecordsForBox(MedicineBox box) async {
     for (var reminder in box.reminders) {
@@ -410,8 +527,12 @@ class MongoDBService {
   }
 
   // ==================== DEVICE MANAGEMENT ====================
-  
-  Future<void> saveDeviceToFirestore(String deviceId, String ip, String name) async {
+
+  Future<void> saveDeviceToFirestore(
+    String deviceId,
+    String ip,
+    String name,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/saveDevice'),
@@ -423,7 +544,7 @@ class MongoDBService {
           'lastSeen': DateTime.now().toIso8601String(),
         }),
       );
-      
+
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Failed to save device: ${response.body}');
       }
@@ -440,7 +561,7 @@ class MongoDBService {
         headers: _headers,
         body: json.encode({'deviceId': deviceId}),
       );
-      
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return data['ip'] as String?;

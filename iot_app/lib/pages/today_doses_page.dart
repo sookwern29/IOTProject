@@ -31,22 +31,30 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
   @override
   Widget build(BuildContext context) {
+    print('🏗️ TodayDosesPage build() called');
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Today\'s Doses'),
-      ),
+      appBar: AppBar(title: Text('Today\'s Doses')),
       body: StreamBuilder<List<MedicineRecord>>(
         stream: _mongoDBService.getTodayDosesFromBoxes(),
         builder: (context, snapshot) {
+          print('📡 StreamBuilder state: ${snapshot.connectionState}');
+          print(
+            '📡 Has data: ${snapshot.hasData}, Data length: ${snapshot.data?.length ?? 0}',
+          );
+          print('📡 Has error: ${snapshot.hasError}, Error: ${snapshot.error}');
+
           if (snapshot.connectionState == ConnectionState.waiting) {
+            print('⏳ Showing loading indicator');
             return Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
+            print('❌ Showing error: ${snapshot.error}');
             return Center(child: Text('Error: ${snapshot.error}'));
           }
 
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            print('📭 No data or empty list');
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -63,6 +71,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
           }
 
           final records = snapshot.data!;
+          print('✅ Displaying ${records.length} records');
           final now = DateTime.now();
           final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
@@ -82,8 +91,9 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
             } else {
               // Past scheduled time and not taken
               final timeSinceScheduled = now.difference(record.scheduledTime);
-              final isPrescription = record.medicineType.toLowerCase() == 'prescription';
-              
+              final isPrescription =
+                  record.medicineType.toLowerCase() == 'prescription';
+
               if (isPrescription) {
                 // Prescription: overdue within 1 hour, missed after 1 hour
                 if (timeSinceScheduled.inMinutes <= 60) {
@@ -109,7 +119,9 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
               SizedBox(height: 20),
               if (overdue.isNotEmpty) ...[
                 _buildSectionHeader('Overdue', Color(0xFFFF6F00)),
-                ...overdue.map((record) => _buildDoseCard(record, isOverdue: true)),
+                ...overdue.map(
+                  (record) => _buildDoseCard(record, isOverdue: true),
+                ),
                 SizedBox(height: 20),
               ],
               if (upcoming.isNotEmpty) ...[
@@ -119,12 +131,16 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
               ],
               if (completed.isNotEmpty) ...[
                 _buildSectionHeader('Completed', Color(0xFF66BB6A)),
-                ...completed.map((record) => _buildDoseCard(record, isCompleted: true)),
+                ...completed.map(
+                  (record) => _buildDoseCard(record, isCompleted: true),
+                ),
                 SizedBox(height: 20),
               ],
               if (missed.isNotEmpty) ...[
                 _buildSectionHeader('Missed', Color(0xFFE53935)),
-                ...missed.map((record) => _buildDoseCard(record, isMissed: true)),
+                ...missed.map(
+                  (record) => _buildDoseCard(record, isMissed: true),
+                ),
               ],
             ],
           );
@@ -155,16 +171,30 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
             LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.secondary),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.secondary,
+              ),
               minHeight: 10,
             ),
             SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildStatItem('Total', total.toString(), Theme.of(context).colorScheme.primary),
-                _buildStatItem('Taken', taken.toString(), Theme.of(context).colorScheme.tertiary),
-                _buildStatItem('Overdue', overdueCount.toString(), Color(0xFFFF6F00)),
+                _buildStatItem(
+                  'Total',
+                  total.toString(),
+                  Theme.of(context).colorScheme.primary,
+                ),
+                _buildStatItem(
+                  'Taken',
+                  taken.toString(),
+                  Theme.of(context).colorScheme.tertiary,
+                ),
+                _buildStatItem(
+                  'Overdue',
+                  overdueCount.toString(),
+                  Color(0xFFFF6F00),
+                ),
                 _buildStatItem('Missed', missed.toString(), Color(0xFFE53935)),
               ],
             ),
@@ -185,10 +215,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
             color: color,
           ),
         ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       ],
     );
   }
@@ -198,11 +225,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
       padding: EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Container(
-            width: 4,
-            height: 20,
-            color: color,
-          ),
+          Container(width: 4, height: 20, color: color),
           SizedBox(width: 8),
           Text(
             title,
@@ -217,9 +240,14 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     );
   }
 
-  Widget _buildDoseCard(MedicineRecord record, {bool isCompleted = false, bool isMissed = false, bool isOverdue = false}) {
+  Widget _buildDoseCard(
+    MedicineRecord record, {
+    bool isCompleted = false,
+    bool isMissed = false,
+    bool isOverdue = false,
+  }) {
     final timeFormat = DateFormat('hh:mm a');
-    
+
     return Card(
       margin: EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -230,12 +258,16 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
           backgroundColor: isCompleted
               ? Color(0xFF66BB6A)
               : isOverdue
-                  ? Color(0xFFFF6F00)
-                  : isMissed
-                      ? Color(0xFFE53935)
-                      : Color(0xFF1976D2),
+              ? Color(0xFFFF6F00)
+              : isMissed
+              ? Color(0xFFE53935)
+              : Color(0xFF1976D2),
           child: Icon(
-            isCompleted ? Icons.check : (isMissed || isOverdue) ? Icons.lightbulb_outline : Icons.medication,
+            isCompleted
+                ? Icons.check
+                : (isMissed || isOverdue)
+                ? Icons.lightbulb_outline
+                : Icons.medication,
             color: Colors.white,
           ),
         ),
@@ -244,8 +276,14 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 16,
-            decoration: isCompleted || isMissed ? TextDecoration.lineThrough : null,
-            color: isMissed ? Colors.grey : isOverdue ? Color(0xFFFF6F00) : null,
+            decoration: isCompleted || isMissed
+                ? TextDecoration.lineThrough
+                : null,
+            color: isMissed
+                ? Colors.grey
+                : isOverdue
+                ? Color(0xFFFF6F00)
+                : null,
           ),
         ),
         subtitle: Column(
@@ -268,7 +306,11 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.lightbulb, color: Color(0xFFFF6F00), size: 28),
+                    icon: Icon(
+                      Icons.lightbulb,
+                      color: Color(0xFFFF6F00),
+                      size: 28,
+                    ),
                     onPressed: () => _lightUpBox(record.boxNumber),
                     tooltip: 'Light up box ${record.boxNumber}',
                   ),
@@ -283,24 +325,24 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
                 ],
               )
             : !isCompleted && !isMissed
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
-                        onPressed: () => _markAsTaken(record),
-                      ),
-                      // IconButton(
-                      //   icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
-                      //   onPressed: () => _markAsMissed(record.id),
-                      // ),
-                    ],
-                  )
-                : Icon(
-                    isCompleted ? Icons.check_circle : Icons.close,
-                    color: isCompleted ? Color(0xFF66BB6A) : Color(0xFFE53935),
-                    size: 28,
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
+                    onPressed: () => _markAsTaken(record),
                   ),
+                  // IconButton(
+                  //   icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
+                  //   onPressed: () => _markAsMissed(record.id),
+                  // ),
+                ],
+              )
+            : Icon(
+                isCompleted ? Icons.check_circle : Icons.close,
+                color: isCompleted ? Color(0xFF66BB6A) : Color(0xFFE53935),
+                size: 28,
+              ),
       ),
     );
   }
@@ -308,16 +350,22 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
   Future<void> _markAsTaken(MedicineRecord record) async {
     try {
       await _mongoDBService.markRecordAsTaken(record.id);
-      
+
       // Update reminder statuses after marking as taken
       await _updateReminderStatuses();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Dose marked as taken!'), backgroundColor: Color(0xFF66BB6A)),
+        SnackBar(
+          content: Text('Dose marked as taken!'),
+          backgroundColor: Color(0xFF66BB6A),
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Color(0xFFE53935)),
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Color(0xFFE53935),
+        ),
       );
     }
   }
@@ -325,16 +373,22 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
   Future<void> _markAsMissed(MedicineRecord record) async {
     try {
       await _mongoDBService.markRecordAsMissed(record.id);
-      
+
       // Update reminder statuses after marking as missed
       await _updateReminderStatuses();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Dose marked as missed'), backgroundColor: Color(0xFFFF9800)),
+        SnackBar(
+          content: Text('Dose marked as missed'),
+          backgroundColor: Color(0xFFFF9800),
+        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Color(0xFFE53935)),
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Color(0xFFE53935),
+        ),
       );
     }
   }
@@ -343,7 +397,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     try {
       // Get the medicine box to find deviceId
       final box = await _mongoDBService.getMedicineBoxByNumber(boxNumber);
-      
+
       if (box == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -353,21 +407,22 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
         );
         return;
       }
-      
+
       // Blink the LED 10 times (10 seconds)
       await _deviceService.blinkBoxLED(box.deviceId, boxNumber, times: 10);
-
     } catch (e) {
       String errorMessage = 'Error: $e';
-      
+
       // Provide helpful error messages
       if (e.toString().contains('Device IP not found')) {
-        errorMessage = 'Device not configured. Please set up your medicine box IP address.';
-      } else if (e.toString().contains('TimeoutException') || 
-                 e.toString().contains('timed out')) {
-        errorMessage = 'Device not responding. Check if it\'s powered on and connected to WiFi.';
+        errorMessage =
+            'Device not configured. Please set up your medicine box IP address.';
+      } else if (e.toString().contains('TimeoutException') ||
+          e.toString().contains('timed out')) {
+        errorMessage =
+            'Device not responding. Check if it\'s powered on and connected to WiFi.';
       }
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(errorMessage),
