@@ -303,7 +303,7 @@ static const String baseUrl = 'https://your-deployed-backend-url.run.app';
 ### 4. Take Medication
 
 - View **Today's Doses** page
-- Tap **✓ Take** button when consuming medicine
+- Detect **Weight Changes** 
 - Status updates to **Completed** in database
 
 ### 5. Find Compartment
@@ -341,7 +341,7 @@ Node.js backend with MongoDB driver. Key endpoints:
 
 ### `Arduino.ino`
 
-ESP32-S3 firmware for IoT device with HTTP server and GPIO control.
+ESP32-S3 firmware for IoT device with HTTPS server and GPIO control.
 
 ---
 
