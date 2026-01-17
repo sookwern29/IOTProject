@@ -112,7 +112,7 @@ HX711:
 1. **Clone the repository:**
 
    ```bash
-   git clone <your-repository-url>
+   git clone https://github.com/sookwern29/IOTProject.git
    cd iot_app
    ```
 
@@ -127,7 +127,7 @@ HX711:
    - Deploy backend to Google Cloud Run (see Backend Setup section)
    - Update `mongodb_service.dart` with your backend URL:
      ```dart
-     static const String baseUrl = 'https://your-backend-url.run.app';
+     static const String baseUrl = 'https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app';
      ```
 
 4. **Run the app:**
@@ -192,7 +192,7 @@ HX711:
 
 4. Get your connection string:
    ```
-   mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/
+   mongodb+srv://smartmed_user:<do-contact-projectowner-for-the-password>@smartmed-cluster.tgq6zpd.mongodb.net/?retryWrites=true&w=majority
    ```
 
 ### 2. Deploy Backend to Google Cloud Run
