@@ -18,10 +18,18 @@ class ReminderTime {
   });
 
   factory ReminderTime.fromMap(Map<String, dynamic> data) {
+    // Handle both old format (individual numbered keys) and new format (daysOfWeek array)
     List<int> days = [];
-    for (int i = 0; i <= 6; i++) {
-      if (data[i.toString()] != null) {
-        days.add(data[i.toString()] as int);
+    
+    if (data['daysOfWeek'] != null && data['daysOfWeek'] is List) {
+      // New format: daysOfWeek array
+      days = List<int>.from(data['daysOfWeek']);
+    } else {
+      // Old format: individual numbered keys (0, 1, 2, etc.)
+      for (int i = 0; i <= 6; i++) {
+        if (data[i.toString()] != null) {
+          days.add(data[i.toString()] as int);
+        }
       }
     }
     
@@ -36,19 +44,14 @@ class ReminderTime {
   }
 
   Map<String, dynamic> toMap() {
-    Map<String, dynamic> map = {
+    return {
       'id': id,
       'hour': hour,
       'minute': minute,
       'isEnabled': isEnabled,
+      'daysOfWeek': daysOfWeek,
       'status': status,
     };
-    
-    for (int i = 0; i < daysOfWeek.length; i++) {
-      map[i.toString()] = daysOfWeek[i];
-    }
-    
-    return map;
   }
 
   String getTimeString() {
@@ -114,7 +117,7 @@ class MedicineBox {
     }
     
     return MedicineBox(
-      id: data['_id'] ?? data['id'] ?? '',
+      id: data['id'] ?? data['_id'] ?? '',  // Use 'id' field first, fall back to '_id'
       name: data['name'] ?? '',
       boxNumber: data['boxNumber'] ?? 0,
       deviceId: data['deviceId'] ?? '',

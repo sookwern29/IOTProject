@@ -7,7 +7,6 @@ import 'pages/adherence_report_page.dart';
 import 'pages/auth_page.dart';
 import 'services/mongodb_service.dart';
 import 'services/notification_service.dart';
-import 'services/mqtt_service.dart';
 import 'services/auth_service.dart';
 
 void main() async {
@@ -113,7 +112,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   final MongoDBService _mongoDBService = MongoDBService();
-  final MqttService _mqttService = MqttService();
   Timer? _statusUpdateTimer;
 
   final List<Widget> _pages = [
@@ -129,9 +127,6 @@ class _HomePageState extends State<HomePage> {
     // Update statuses immediately when app starts
     _updateReminderStatuses();
 
-    // Initialize MQTT connection
-    _initializeMqtt();
-
     // Set up periodic updates every 5 minutes
     _statusUpdateTimer = Timer.periodic(Duration(minutes: 5), (_) {
       _updateReminderStatuses();
@@ -141,24 +136,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _statusUpdateTimer?.cancel();
-    _mqttService.dispose();
     super.dispose();
-  }
-
-  Future<void> _initializeMqtt() async {
-    try {
-      // Get the first medicine box to use its ID for MQTT subscription
-      final boxes = await _mongoDBService.getMedicineBoxes().first;
-      if (boxes.isNotEmpty) {
-        final medicineBoxId = boxes.first.id;
-        print('📡 Initializing MQTT with Medicine Box ID: $medicineBoxId');
-        await _mqttService.connect(medicineBoxId);
-      } else {
-        print('⚠️ No medicine boxes found - MQTT not initialized');
-      }
-    } catch (e) {
-      print('❌ Error initializing MQTT: $e');
-    }
   }
 
   Future<void> _updateReminderStatuses() async {

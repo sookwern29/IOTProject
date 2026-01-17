@@ -3,6 +3,7 @@
 #include "HX711.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <time.h>
 #include <vector>
 
@@ -11,11 +12,12 @@ const char* ssid = "Joe97178";
 const char* password = "JW0509SB";
 
 const char* API_BASE_URL =
-  "https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app";
+  "https://smartmed-mongo-api-3qu7lwzn2q-as.a.run.app";
 
 // ================= HARDWARE =================
 Servo myServo;
 HX711 scale;
+WebServer server(80);  // Web server on port 80
 
 const int PIN_SERVO = 47;
 const int PIN_BUTTON = 4;
@@ -193,7 +195,63 @@ void updateRecordToCompleted(const String& recordId) {
 
   http.end();
 }
+// ================= WEB SERVER HANDLERS =================
+void handleDiscover() {
+  String json = "{"
+    "\"device\":\"Smart Medicine Box\","
+    "\"boxId\":\"" + boxId + "\","
+    "\"version\":\"1.0\","
+    "\"ip\":\"" + WiFi.localIP().toString() + "\""
+  "}";
+  server.send(200, "application/json", json);
+  Serial.println("📱 /discover called");
+}
 
+void handleStatus() {
+  String json = "{"
+    "\"boxId\":\"" + boxId + "\","
+    "\"isBoxOpen\":" + String(isBoxOpen ? "true" : "false") + ","
+    "\"activeRecord\":\"" + activeRecordId + "\","
+    "\"weight\":" + String(scale.get_units(10), 2) + ","
+    "\"wifi\":\"" + String(ssid) + "\","
+    "\"ip\":\"" + WiFi.localIP().toString() + "\""
+  "}";
+  server.send(200, "application/json", json);
+  Serial.println("📱 /status called");
+}
+
+void handleGetRecords() {
+  String resp;
+  if (fetchMedicineRecords(resp)) {
+    server.send(200, "application/json", resp);
+    Serial.println("📱 /getRecords called - success");
+  } else {
+    server.send(500, "application/json", "{\"error\":\"Failed to fetch records\"}");
+    Serial.println("📱 /getRecords called - failed");
+  }
+}
+
+void handleStartAlarm() {
+  // Buzzer sound for "Find Device" feature
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(PIN_BUZZER, HIGH);
+    delay(100);
+    digitalWrite(PIN_BUZZER, LOW);
+    delay(100);
+  }
+  server.send(200, "application/json", "{\"status\":\"alarm started\"}");
+  Serial.println("📱 /startalarm called");
+}
+
+void handleStopBuzzer() {
+  digitalWrite(PIN_BUZZER, LOW);
+  server.send(200, "application/json", "{\"status\":\"buzzer stopped\"}");
+  Serial.println("📱 /stopbuzzer called");
+}
+
+void handleNotFound() {
+  server.send(404, "text/plain", "Not Found");
+}
 // ================= HARDWARE =================
 void openBox() {
   if (isBoxOpen) return;
@@ -285,11 +343,23 @@ void setup() {
   scale.set_scale(414.0);
   scale.tare();
 
+  // Setup Web Server
+  server.on("/discover", handleDiscover);
+  server.on("/status", handleStatus);
+  server.on("/getRecords", handleGetRecords);
+  server.on("/startalarm", handleStartAlarm);
+  server.on("/stopbuzzer", handleStopBuzzer);
+  server.onNotFound(handleNotFound);
+  server.begin();
+  Serial.println("🌐 Web Server started on port 80");
+
   Serial.println("🚀 SYSTEM READY");
 }
 
 // ================= LOOP =================
 void loop() {
+  server.handleClient();  // Handle incoming web requests
+  
   static bool lastBtn = HIGH;
   bool btn = digitalRead(PIN_BUTTON);
 

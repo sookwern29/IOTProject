@@ -4,7 +4,6 @@ import 'dart:async';
 import '../models/dose_record.dart';
 import '../services/mongodb_service.dart';
 import '../services/device_service.dart';
-import '../services/mqtt_service.dart';
 
 class TodayDosesPage extends StatefulWidget {
   @override
@@ -14,84 +13,12 @@ class TodayDosesPage extends StatefulWidget {
 class _TodayDosesPageState extends State<TodayDosesPage> {
   final MongoDBService _mongoDBService = MongoDBService();
   final DeviceService _deviceService = DeviceService();
-  final MqttService _mqttService = MqttService();
-  StreamSubscription? _mqttSubscription;
 
   @override
   void initState() {
     super.initState();
     // Update all reminder statuses when page loads
     _updateReminderStatuses();
-    
-    // Listen to MQTT status updates
-    _listenToMqttUpdates();
-  }
-
-  @override
-  void dispose() {
-    _mqttSubscription?.cancel();
-    super.dispose();
-  }
-
-  /// Listen to MQTT updates from IoT device
-  void _listenToMqttUpdates() {
-    _mqttSubscription = _mqttService.statusStream.listen((data) {
-      print('📨 Today Doses Page received MQTT update: $data');
-      
-      final taken = data['taken'] as bool?;
-      final boxNumber = data['boxNumber'] as int?;
-      final weight = data['weight'] as num?;
-      
-      if (taken == true && boxNumber != null) {
-        // Medicine was taken - show success notification
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.white),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '✅ Medicine taken from Box $boxNumber! Weight: ${weight?.toStringAsFixed(1)}g',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: Color(0xFF66BB6A),
-              duration: Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          // LED is already handled by ESP32 - no need to send command back
-        }
-      } else if (taken == false && boxNumber != null) {
-        // Medicine NOT taken - show info notification
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.white),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'ℹ️ Box $boxNumber closed - No medicine taken (weight unchanged)',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: Color(0xFFFF9800),
-              duration: Duration(seconds: 3),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          // LED is already handled by ESP32 - no need to send command back
-        }
-      }
-    });
   }
 
   Future<void> _updateReminderStatuses() async {

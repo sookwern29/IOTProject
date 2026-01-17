@@ -30,21 +30,59 @@ class MedicineRecord {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  // ✅ REACTIVE GETTERS (FIXED)
+  // ==================== SAFE PARSERS ====================
+
+  static String _parseId(dynamic value) {
+    if (value == null) return '';
+    if (value is String) return value;
+    if (value is Map && value.containsKey('\$oid')) {
+      return value['\$oid'];
+    }
+    return value.toString();
+  }
+
+  static DateTime _parseDate(dynamic value) {
+    if (value == null) return DateTime.now();
+
+    if (value is String) {
+      return DateTime.parse(value);
+    }
+
+    // MongoDB BSON date format
+    if (value is Map && value.containsKey('\$date')) {
+      return DateTime.parse(value['\$date']);
+    }
+
+    throw Exception('Invalid date format: $value');
+  }
+
+  // ==================== GETTERS ====================
+
   bool get isTaken => status == 'completed' || takenTime != null;
   bool get isMissed => status == 'missed';
 
-  // Keep fromFirestore for backward compatibility (unused now)
-  factory MedicineRecord.fromFirestore(dynamic doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return MedicineRecord.fromJson({...data, 'id': doc.id});
+  double get adherenceScore {
+    switch (status) {
+      case 'completed':
+        return 1.0;
+      case 'missed':
+        return 0.0;
+      case 'overdue':
+        return 0.5;
+      case 'upcoming':
+      default:
+        return 0.5;
+    }
   }
+
+  // ==================== FROM JSON (MongoDB / API) ====================
 
   factory MedicineRecord.fromJson(Map<String, dynamic> data) {
     // Normalize status
-    String recordStatus = (data['status'] ?? 'upcoming').toString().toLowerCase();
+    String recordStatus =
+        (data['status'] ?? 'upcoming').toString().toLowerCase();
 
-    // Backward compatibility for old records
+    // Backward compatibility for old Firestore-style records
     if (!data.containsKey('status')) {
       if (data['isTaken'] == true) {
         recordStatus = 'completed';
@@ -54,27 +92,29 @@ class MedicineRecord {
     }
 
     return MedicineRecord(
-      id: data['_id'] ?? data['id'] ?? '',
+      id: _parseId(data['_id'] ?? data['id']),
       medicineBoxId: data['medicineBoxId'] ?? '',
       medicineName: data['medicineName'] ?? '',
       boxNumber: data['boxNumber'] ?? 0,
       medicineType: data['medicineType'] ?? '',
       deviceId: data['deviceId'] ?? '',
-      reminderTimeId: data['reminderTimeId'] ?? '',
+      reminderTimeId:
+          data['reminderTimeId'] ?? data['reminderId'] ?? '',
       reminderHour: data['reminderHour'] ?? 0,
       reminderMinute: data['reminderMinute'] ?? 0,
-      scheduledTime: DateTime.parse(data['scheduledTime']),
-      takenTime: data['takenTime'] != null
-          ? DateTime.parse(data['takenTime'])
-          : null,
+      scheduledTime: _parseDate(data['scheduledTime']),
+      takenTime:
+          data['takenTime'] != null ? _parseDate(data['takenTime']) : null,
       status: recordStatus,
       createdAt: data['createdAt'] != null
-          ? DateTime.parse(data['createdAt'])
+          ? _parseDate(data['createdAt'])
           : DateTime.now(),
     );
   }
 
-  Map<String, dynamic> toFirestore() {
+  // ==================== TO JSON (API SEND) ====================
+
+  Map<String, dynamic> toJson() {
     return {
       'id': id,
       'medicineBoxId': medicineBoxId,
@@ -90,19 +130,5 @@ class MedicineRecord {
       'status': status,
       'createdAt': createdAt.toIso8601String(),
     };
-  }
-
-  double get adherenceScore {
-    switch (status) {
-      case 'completed':
-        return 1.0;
-      case 'missed':
-        return 0.0;
-      case 'overdue':
-        return 0.5;
-      case 'upcoming':
-      default:
-        return 0.5;
-    }
   }
 }

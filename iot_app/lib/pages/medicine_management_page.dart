@@ -3,6 +3,8 @@ import '../models/medicine_box.dart';
 import '../services/mongodb_service.dart';
 import '../services/device_service.dart';
 import 'device_scanner_page.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class MedicineManagementPage extends StatefulWidget {
   @override
@@ -197,12 +199,12 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
 
   void _showMedicineBoxDialog(BuildContext context, MedicineBox? box) async {
     // Device will be selected manually or set later
-    String autoDeviceId = '';
+    String autoDeviceId = box?.deviceId ?? '';
     
     final _formKey = GlobalKey<FormState>();
     final _nameController = TextEditingController(text: box?.name ?? '');
     int _selectedBoxNumber = box?.boxNumber ?? 1;
-    final _deviceIdController = TextEditingController(text: box?.deviceId ?? autoDeviceId);
+    final _deviceIdController = TextEditingController(text: autoDeviceId);
     String _medicineType = box?.medicineType ?? 'prescription';
     
     if (!mounted) return;
@@ -211,7 +213,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (builderContext, setDialogState) {
             return AlertDialog(
               title: Text(box == null ? 'Add Medicine Box' : 'Edit Medicine Box'),
               content: SingleChildScrollView(
@@ -256,7 +258,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                               
                               return InkWell(
                                 onTap: () {
-                                  setState(() {
+                                  setDialogState(() {
                                     _selectedBoxNumber = boxNum;
                                   });
                                 },
@@ -265,18 +267,18 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                                   height: 60,
                                   decoration: BoxDecoration(
                                     color: isSelected 
-                                        ? Theme.of(context).colorScheme.primary
+                                        ? Theme.of(builderContext).colorScheme.primary
                                         : Colors.white,
                                     border: Border.all(
                                       color: isSelected 
-                                          ? Theme.of(context).colorScheme.primary
+                                          ? Theme.of(builderContext).colorScheme.primary
                                           : Colors.grey[400]!,
                                       width: 2,
                                     ),
                                     borderRadius: BorderRadius.circular(12),
                                     boxShadow: isSelected ? [
                                       BoxShadow(
-                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                        color: Theme.of(builderContext).colorScheme.primary.withOpacity(0.3),
                                         blurRadius: 8,
                                         offset: Offset(0, 2),
                                       )
@@ -334,16 +336,51 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                           SizedBox(width: 8),
                           IconButton(
                             onPressed: () async {
-                              Navigator.pop(context);
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => DeviceScannerPage(),
-                                ),
-                              );
-                              // Re-open dialog after returning from scanner
-                              if (mounted) {
-                                _showMedicineBoxDialog(context, box);
+                              // Directly call ESP32 /discover endpoint
+                              try {
+                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                  SnackBar(
+                                    content: Text('🔍 Scanning for device at 192.168.0.23...'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+
+                                final response = await http
+                                    .get(Uri.parse('http://192.168.0.23/discover'))
+                                    .timeout(const Duration(seconds: 3));
+
+                                if (response.statusCode == 200) {
+                                  final data = json.decode(response.body);
+                                  final deviceId = data['boxId'] ?? 'UNKNOWN';
+                                  
+                                  setDialogState(() {
+                                    _deviceIdController.text = deviceId;
+                                  });
+                                  
+                                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                    SnackBar(
+                                      content: Text('✅ Device found! ID: $deviceId'),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                    SnackBar(
+                                      content: Text('❌ Device not responding. Check if ESP32 is powered on.'),
+                                      backgroundColor: Colors.red,
+                                      duration: Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                  SnackBar(
+                                    content: Text('❌ Connection failed. Ensure ESP32 is on WiFi: Joe97178'),
+                                    backgroundColor: Colors.red,
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
                               }
                             },
                             icon: Icon(Icons.wifi_find),
@@ -386,7 +423,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                           ),
                         ],
                         onChanged: (value) {
-                          setState(() {
+                          setDialogState(() {
                             _medicineType = value!;
                           });
                         },
@@ -397,7 +434,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogContext),
                   child: Text('Cancel'),
                 ),
                 ElevatedButton(
@@ -421,15 +458,16 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                         _deviceService.setDeviceIp(boxId, _deviceIdController.text);
                         
                         if (box == null) {
-                          await _mongoDBService.addMedicineBox(newBox);
+                          // Add box and get the MongoDB-assigned ID
+                          final createdBox = await _mongoDBService.addMedicineBox(newBox);
                           // Generate records for all reminders if box has any
-                          if (newBox.reminders.isNotEmpty) {
-                            await _mongoDBService.generateRecordsForBox(newBox);
+                          if (createdBox.reminders.isNotEmpty) {
+                            await _mongoDBService.generateRecordsForBox(createdBox);
                           }
                         } else {
                           await _mongoDBService.updateMedicineBox(newBox);
                         }
-                        Navigator.pop(context);
+                        Navigator.pop(dialogContext);
                         ScaffoldMessenger.of(this.context).showSnackBar(
                           SnackBar(
                             content: Text(box == null 
@@ -611,9 +649,36 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                       );
                       
                       try {
-                        await _mongoDBService.updateMedicineBox(updatedBox);
+                        print('🔧 Adding reminder to box ID: ${box.id}');
+                        print('📋 Box details: name=${box.name}, boxNumber=${box.boxNumber}');
+                        print('⏰ New reminder: ${newReminder.getTimeString()}, days=${enabledDays}');
+                        
+                        // CRITICAL: Fetch the latest box data from database to ensure it exists
+                        print('🔍 Verifying box exists in database...');
+                        final existingBox = await _mongoDBService.getMedicineBox(box.id);
+                        
+                        if (existingBox == null) {
+                          throw Exception('Medicine box not found in database. ID: ${box.id}');
+                        }
+                        
+                        print('✅ Box found in database: ${existingBox.name}');
+                        print('📦 Existing reminders count: ${existingBox.reminders.length}');
+                        
+                        // Create updated box with existing reminders + new one
+                        final updatedBoxWithLatestData = MedicineBox(
+                          id: existingBox.id,
+                          name: existingBox.name,
+                          boxNumber: existingBox.boxNumber,
+                          deviceId: existingBox.deviceId,
+                          medicineType: existingBox.medicineType,
+                          isConnected: existingBox.isConnected,
+                          lastUpdated: DateTime.now(),
+                          reminders: [...existingBox.reminders, newReminder],
+                        );
+                        
+                        await _mongoDBService.updateMedicineBox(updatedBoxWithLatestData);
                         // Generate records for this reminder
-                        await _mongoDBService.generateRecordsForReminder(updatedBox, newReminder);
+                        await _mongoDBService.generateRecordsForReminder(updatedBoxWithLatestData, newReminder);
                         
                         Navigator.pop(context);
                         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -623,6 +688,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                           ),
                         );
                       } catch (e) {
+                        print('❌ Error adding reminder: $e');
                         ScaffoldMessenger.of(this.context).showSnackBar(
                           SnackBar(content: Text('Error: $e'), backgroundColor: Color(0xFFE53935)),
                         );
@@ -805,14 +871,42 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                       );
                       
                       try {
+                        print('🔧 Updating reminder for box ID: ${box.id}');
+                        
+                        // CRITICAL: Fetch the latest box data from database to ensure it exists
+                        print('🔍 Verifying box exists in database...');
+                        final existingBox = await _mongoDBService.getMedicineBox(box.id);
+                        
+                        if (existingBox == null) {
+                          throw Exception('Medicine box not found in database. ID: ${box.id}');
+                        }
+                        
+                        print('✅ Box found in database: ${existingBox.name}');
+                        
+                        // Update reminders on the latest box data
+                        final updatedReminders = existingBox.reminders.map((r) {
+                          return r.id == reminder.id ? updatedReminder : r;
+                        }).toList();
+                        
+                        final updatedBoxWithLatestData = MedicineBox(
+                          id: existingBox.id,
+                          name: existingBox.name,
+                          boxNumber: existingBox.boxNumber,
+                          deviceId: existingBox.deviceId,
+                          medicineType: existingBox.medicineType,
+                          isConnected: existingBox.isConnected,
+                          lastUpdated: DateTime.now(),
+                          reminders: updatedReminders,
+                        );
+                        
                         // Delete old future records for this reminder
-                        await _mongoDBService.deleteFutureRecordsForReminder(box.id, reminder.id);
+                        await _mongoDBService.deleteFutureRecordsForReminder(existingBox.id, reminder.id);
                         
                         // Update the box with new reminder
-                        await _mongoDBService.updateMedicineBox(updatedBox);
+                        await _mongoDBService.updateMedicineBox(updatedBoxWithLatestData);
                         
                         // Generate new records for updated reminder
-                        await _mongoDBService.generateRecordsForReminder(updatedBox, updatedReminder);
+                        await _mongoDBService.generateRecordsForReminder(updatedBoxWithLatestData, updatedReminder);
                         
                         Navigator.pop(context);
                         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -822,6 +916,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                           ),
                         );
                       } catch (e) {
+                        print('❌ Error updating reminder: $e');
                         ScaffoldMessenger.of(this.context).showSnackBar(
                           SnackBar(content: Text('Error: $e'), backgroundColor: Color(0xFFE53935)),
                         );

@@ -51,9 +51,6 @@ dependencies:
   # HTTP for IoT device communication
   http: ^1.1.0
   
-  # MQTT for real-time IoT updates
-  mqtt_client: ^10.2.0
-  
   # Local storage
   shared_preferences: ^2.2.2
 

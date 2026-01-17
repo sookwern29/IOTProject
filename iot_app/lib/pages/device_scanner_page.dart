@@ -308,14 +308,85 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
   }
 
   // WiFi Scanner Methods
+  /// Quick test for known IP from Serial Monitor
+  Future<void> _quickTestIP(String ip) async {
+    print('🔍 Quick testing IP: $ip');
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Testing $ip...')),
+    );
+
+    final endpoints = ['/discover', '/status', '/getRecords'];
+    
+    for (final endpoint in endpoints) {
+      try {
+        print('   Trying http://$ip$endpoint');
+        final response = await http
+            .get(Uri.parse('http://$ip$endpoint'))
+            .timeout(const Duration(seconds: 3));
+        
+        print('   ✅ $endpoint returned ${response.statusCode}');
+        print('   Body: ${response.body}');
+        
+        if (response.statusCode == 200) {
+          // Device found! Try to add it
+          final deviceId = 'D50FF8'; // From Serial Monitor
+          final deviceData = {
+            'ip': ip,
+            'name': 'Smart Medicine Box',
+            'version': '1.0',
+            'lastSeen': DateTime.now().toIso8601String(),
+            'deviceId': deviceId,
+          };
+          
+          setState(() {
+            if (!_discoveredDevices.any((d) => d['ip'] == ip)) {
+              _discoveredDevices.add(deviceData);
+            }
+          });
+          
+          _saveDevicesToDisk();
+          await _saveDeviceToFirestore(deviceId, ip, 'Smart Medicine Box');
+          await _autoLinkToAllBoxes(deviceId, ip);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Device found at $ip! ID: $deviceId'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          
+          return; // Success!
+        }
+      } catch (e) {
+        print('   ❌ $endpoint failed: $e');
+      }
+    }
+    
+    // If we get here, no endpoint worked
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('❌ Could not connect to $ip. Check:\\n'
+            '• ESP32 is powered on\\n'
+            '• Both on same WiFi network\\n'
+            '• Check Serial Monitor for correct IP'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
   Future<void> _scanNetwork() async {
-    setState(() {
-      _isIPScanning = true;
-      _discoveredDevices.clear();
-      _scanProgress = 0;
-      _scannedCount = 0;
-      _scanStatus = 'Getting network info...';
-    });
+    if (mounted) {
+      setState(() {
+        _isIPScanning = true;
+        _discoveredDevices.clear();
+        _scanProgress = 0;
+        _scannedCount = 0;
+        _scanStatus = 'Getting network info...';
+      });
+    }
 
     try {
       // Get local IP to determine network range
@@ -324,9 +395,11 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
 
       try {
         final interfaces = await NetworkInterface.list();
+        print('🔍 Network interfaces found:');
         for (var interface in interfaces) {
           for (var addr in interface.addresses) {
             if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+              print('   ${interface.name}: ${addr.address}');
               allLocalIps.add(addr.address);
               // Prefer 192.168.x.x addresses
               if (addr.address.startsWith('192.168') && localIp == null) {
@@ -336,25 +409,28 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
           }
         }
       } catch (e) {
-        print('Error getting network interfaces: $e');
+        print('❌ Error getting network interfaces: $e');
       }
 
       // If no 192.168.x.x found, use first available local IP
       if (localIp == null && allLocalIps.isNotEmpty) {
         localIp = allLocalIps.first;
+        print('⚠️ No 192.168.x.x found, using ${localIp}');
       }
 
       if (localIp == null) {
-        setState(() {
-          _scanStatus = 'Could not find local IP. Please enter IP manually.';
-          _isIPScanning = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not detect network. Use manual entry below.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        if (mounted) {
+          setState(() {
+            _scanStatus = 'Could not find local IP. Please enter IP manually.';
+            _isIPScanning = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not detect network. Use manual entry below.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
         return;
       }
 
@@ -366,6 +442,9 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
         _totalToScan = 254;
         _scanStatus = 'Scanning $networkPrefix.1 - $networkPrefix.254...';
       });
+
+      print('🌐 Starting scan on $networkPrefix.0/24 network...');
+      print('📍 Your device should be at: 192.168.0.23 (from Serial Monitor)');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Scanning $networkPrefix.0/24 network...')),
@@ -384,54 +463,62 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
 
         await Future.wait(futures);
 
-        setState(() {
-          _scannedCount = end;
-          _scanProgress = end / 254;
-          _scanStatus =
-              'Scanned $end/254 IPs... (Found: ${_discoveredDevices.length})';
-        });
+        if (mounted) {
+          setState(() {
+            _scannedCount = end;
+            _scanProgress = end / 254;
+            _scanStatus =
+                'Scanned $end/254 IPs... (Found: ${_discoveredDevices.length})';
+          });
+        }
 
         // Small delay between batches
         await Future.delayed(const Duration(milliseconds: 100));
       }
 
-      setState(() {
-        _isIPScanning = false;
-        _scanProgress = 1;
-        if (_discoveredDevices.isEmpty) {
-          _scanStatus = 'Scan complete. No devices found.';
-        } else {
-          _scanStatus = 'Found ${_discoveredDevices.length} device(s)!';
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _isIPScanning = false;
+          _scanProgress = 1;
+          if (_discoveredDevices.isEmpty) {
+            _scanStatus = 'Scan complete. No devices found.';
+          } else {
+            _scanStatus = 'Found ${_discoveredDevices.length} device(s)!';
+          }
+        });
+      }
 
-      if (_discoveredDevices.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No ESP32 devices found. Check if:\n• ESP32 is powered on\n• ESP32 is on same WiFi\n• Check Serial Monitor for IP',
+      if (mounted) {
+        if (_discoveredDevices.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'No ESP32 devices found. Check if:\n• ESP32 is powered on\n• ESP32 is on same WiFi\n• Check Serial Monitor for IP',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
             ),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 5),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Found ${_discoveredDevices.length} device(s)!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Found ${_discoveredDevices.length} device(s)!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       }
     } catch (e) {
-      setState(() {
-        _isIPScanning = false;
-        _scanStatus = 'Scan error: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isIPScanning = false;
+          _scanStatus = 'Scan error: $e';
+        });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Scan failed: $e'), backgroundColor: Colors.red),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Scan failed: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -439,17 +526,18 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
     if (!_isIPScanning) return;
 
     try {
-      // Try /discover endpoint first
+      // Try /discover endpoint first with longer timeout
       final response = await http
           .get(Uri.parse('http://$ip/discover'))
-          .timeout(const Duration(milliseconds: 1500));
+          .timeout(const Duration(seconds: 2));
 
       if (response.statusCode == 200) {
+        print('✅ Got 200 from $ip /discover: ${response.body}');
         try {
           final data = json.decode(response.body);
-          if (data['device'] == 'Smart Medicine Box') {
-            final deviceId =
-                data['boxId'] ?? data['medicineBoxId'] ?? 'device_$ip';
+          // Accept any device that responds with device info
+          if (data is Map<String, dynamic>) {
+            final deviceId = data['boxId'] ?? data['medicineBoxId'] ?? data['id'] ?? 'D50FF8';
             final deviceData = {
               'ip': ip,
               'name': data['device'] ?? 'Smart Medicine Box',
@@ -457,39 +545,40 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
               'lastSeen': DateTime.now().toIso8601String(),
               'deviceId': deviceId,
             };
-            setState(() {
-              // Avoid duplicates
-              if (!_discoveredDevices.any((d) => d['ip'] == ip)) {
-                _discoveredDevices.add(deviceData);
-              }
-            });
+            print('✅ Found device at $ip - ID: $deviceId');
+            if (mounted) {
+              setState(() {
+                if (!_discoveredDevices.any((d) => d['ip'] == ip)) {
+                  _discoveredDevices.add(deviceData);
+                }
+              });
+            }
             _saveDevicesToDisk();
-            // Save to Firestore devices collection
-            await _saveDeviceToFirestore(
-              deviceId,
-              ip,
-              data['device'] ?? 'Smart Medicine Box',
-            );
-            // Automatically link to all medicine boxes
+            await _saveDeviceToFirestore(deviceId, ip, data['device'] ?? 'Smart Medicine Box');
             await _autoLinkToAllBoxes(deviceId, ip);
+            
+            // Return device ID to caller (for medicine management page)
+            if (mounted && Navigator.canPop(context)) {
+              Navigator.pop(context, deviceId);
+            }
             return;
           }
         } catch (e) {
-          // Ignore parse errors
+          print('⚠️ Parse error for $ip /discover: $e');
         }
       }
 
-      // Also try /status endpoint as fallback
+      // Try /status endpoint
       final statusResponse = await http
           .get(Uri.parse('http://$ip/status'))
-          .timeout(const Duration(milliseconds: 1500));
+          .timeout(const Duration(seconds: 2));
 
       if (statusResponse.statusCode == 200) {
+        print('✅ Got 200 from $ip /status: ${statusResponse.body}');
         try {
           final data = json.decode(statusResponse.body);
-          if (data.containsKey('device')) {
-            final deviceId =
-                data['boxId'] ?? data['medicineBoxId'] ?? 'device_$ip';
+          if (data is Map<String, dynamic>) {
+            final deviceId = data['boxId'] ?? data['medicineBoxId'] ?? data['id'] ?? 'D50FF8';
             final deviceData = {
               'ip': ip,
               'name': 'Smart Medicine Box',
@@ -497,21 +586,54 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
               'lastSeen': DateTime.now().toIso8601String(),
               'deviceId': deviceId,
             };
-            setState(() {
-              if (!_discoveredDevices.any((d) => d['ip'] == ip)) {
-                _discoveredDevices.add(deviceData);
-              }
-            });
+            print('✅ Found device at $ip via /status - ID: $deviceId');
+            if (mounted) {
+              setState(() {
+                if (!_discoveredDevices.any((d) => d['ip'] == ip)) {
+                  _discoveredDevices.add(deviceData);
+                }
+              });
+            }
             _saveDevicesToDisk();
-            // Save to Firestore devices collection
             await _saveDeviceToFirestore(deviceId, ip, 'Smart Medicine Box');
-            // Automatically link to all medicine boxes
             await _autoLinkToAllBoxes(deviceId, ip);
+            return;
           }
-        } catch (_) {}
+        } catch (e) {
+          print('⚠️ Parse error for $ip /status: $e');
+        }
+      }
+
+      // Try /getRecords endpoint (from Arduino code)
+      final recordsResponse = await http
+          .get(Uri.parse('http://$ip/getRecords'))
+          .timeout(const Duration(seconds: 2));
+
+      if (recordsResponse.statusCode == 200) {
+        print('✅ Got 200 from $ip /getRecords - This is a Smart Medicine Box!');
+        // If /getRecords works, it's definitely our device
+        final deviceId = 'D50FF8'; // Use the ID from Serial Monitor
+        final deviceData = {
+          'ip': ip,
+          'name': 'Smart Medicine Box',
+          'version': '1.0',
+          'lastSeen': DateTime.now().toIso8601String(),
+          'deviceId': deviceId,
+        };
+        if (mounted) {
+          setState(() {
+            if (!_discoveredDevices.any((d) => d['ip'] == ip)) {
+              _discoveredDevices.add(deviceData);
+            }
+          });
+        }
+        _saveDevicesToDisk();
+        await _saveDeviceToFirestore(deviceId, ip, 'Smart Medicine Box');
+        await _autoLinkToAllBoxes(deviceId, ip);
+        return;
       }
     } catch (e) {
-      // Device not found or not responding - ignore
+      // Device not found or not responding - ignore (normal during scan)
     }
   }
 
@@ -569,12 +691,14 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
 
       if (devicesJson != null) {
         final List<dynamic> devicesList = json.decode(devicesJson);
-        setState(() {
-          _discoveredDevices = devicesList.cast<Map<String, dynamic>>();
-          if (_discoveredDevices.isNotEmpty) {
-            _scanStatus = 'Loaded ${_discoveredDevices.length} saved device(s)';
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _discoveredDevices = devicesList.cast<Map<String, dynamic>>();
+            if (_discoveredDevices.isNotEmpty) {
+              _scanStatus = 'Loaded ${_discoveredDevices.length} saved device(s)';
+            }
+          });
+        }
       }
     } catch (e) {
       print('Error loading saved devices: $e');
@@ -595,16 +719,18 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('discovered_devices');
-      setState(() {
-        _discoveredDevices.clear();
-        _scanStatus = 'Cleared all saved devices';
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Cleared all saved devices'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      if (mounted) {
+        setState(() {
+          _discoveredDevices.clear();
+          _scanStatus = 'Cleared all saved devices';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cleared all saved devices'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     } catch (e) {
       print('Error clearing devices: $e');
     }
@@ -813,17 +939,6 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
                     ),
                   ),
                 ],
-              ),
-            ),
-            SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: () => _findDevice(device),
-              icon: Icon(Icons.volume_up, size: 18),
-              label: Text('Find Device'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFFFFA726),
-                foregroundColor: Colors.white,
-                minimumSize: Size(double.infinity, 40),
               ),
             ),
           ],

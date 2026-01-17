@@ -21,24 +21,42 @@ class MongoDBService {
 
   // ==================== MEDICINE BOX CRUD ====================
   
-  Future<void> addMedicineBox(MedicineBox box) async {
+  Future<MedicineBox> addMedicineBox(MedicineBox box) async {
+    print('📤 Creating medicine box');
+    print('📦 Box data: ${json.encode(box.toJson())}');
+    
     final response = await http.post(
       Uri.parse('$_baseUrl/medicineBoxes'),
       headers: _headers,
       body: json.encode(box.toJson()),
     );
     
+    print('📥 Create response status: ${response.statusCode}');
+    print('📥 Create response body: ${response.body}');
+    
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to add medicine box: ${response.body}');
     }
+    
+    // Return the box with the MongoDB-assigned ID
+    final responseData = json.decode(response.body);
+    return MedicineBox.fromJson(responseData);
   }
 
   Future<void> updateMedicineBox(MedicineBox box) async {
+    final boxJson = box.toJson();
+    print('📤 Updating medicine box ${box.id}');
+    print('📦 Box data: ${json.encode(boxJson)}');
+    print('🔔 Reminders count: ${box.reminders.length}');
+    
     final response = await http.put(
       Uri.parse('$_baseUrl/medicineBoxes/${box.id}'),
       headers: _headers,
-      body: json.encode(box.toJson()),
+      body: json.encode(boxJson),
     );
+    
+    print('📥 Response status: ${response.statusCode}');
+    print('📥 Response body: ${response.body}');
     
     if (response.statusCode != 200) {
       throw Exception('Failed to update medicine box: ${response.body}');
@@ -99,18 +117,24 @@ class MongoDBService {
 
   Future<MedicineBox?> getMedicineBox(String boxId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/medicineBoxes/$boxId'),
-        headers: _headers,
+      print('🔍 Fetching medicine box with ID: $boxId');
+      
+      // Since GET /medicineBoxes/{id} endpoint doesn't exist,
+      // we fetch all boxes and find the one we need
+      final boxes = await getMedicineBoxesList();
+      print('📦 Total boxes in database: ${boxes.length}');
+      
+      final box = boxes.firstWhere(
+        (b) => b.id == boxId,
+        orElse: () => throw Exception('Box not found'),
       );
       
-      if (response.statusCode == 200) {
-        return MedicineBox.fromJson(json.decode(response.body));
-      }
+      print('✅ Box found: ${box.name}, reminders: ${box.reminders.length}');
+      return box;
     } catch (e) {
-      print('Error fetching medicine box: $e');
+      print('❌ Error fetching medicine box: $e');
+      return null;
     }
-    return null;
   }
 
   Future<MedicineBox?> getMedicineBoxByNumber(int boxNumber) async {
