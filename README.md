@@ -192,7 +192,7 @@ HX711:
 
 4. Get your connection string:
    ```
-   mongodb+srv://smartmed_user:<do-contact-projectowner-for-the-password>@smartmed-cluster.tgq6zpd.mongodb.net/?retryWrites=true&w=majority
+   mongodb+srv://<username>:<do-contact-projectowner-for-the-password>@smartmed-cluster.tgq6zpd.mongodb.net/?retryWrites=true&w=majority
    ```
 
 ### 2. Deploy Backend to Google Cloud Run
@@ -214,7 +214,7 @@ HX711:
 
    ```env
    MONGO_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/
-   MONGO_DB_NAME=smartMedicineBox
+   MONGO_DB_NAME=smartmed
    ```
 
 4. **Deploy:**
@@ -230,7 +230,7 @@ HX711:
 Edit `lib/services/mongodb_service.dart`:
 
 ```dart
-static const String baseUrl = 'https://your-deployed-backend-url.run.app';
+static const String baseUrl = 'https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app';
 ```
 
 ---
@@ -250,7 +250,7 @@ static const String baseUrl = 'https://your-deployed-backend-url.run.app';
 3. **Set backend URL** in Arduino code:
 
    ```cpp
-   const char* serverUrl = "https://your-backend-url.run.app";
+   const char* serverUrl = "https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app";
    ```
 
 4. **Upload and monitor** via Serial Monitor to get device IP address
