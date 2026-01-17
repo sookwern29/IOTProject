@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// Model for medicine box and reminder configuration
 
 class ReminderTime {
   final String id;
@@ -79,7 +79,8 @@ class MedicineBox {
     this.compartments,
   });
 
-  factory MedicineBox.fromFirestore(DocumentSnapshot doc) {
+  // Keep fromFirestore for backward compatibility (unused now)
+  factory MedicineBox.fromFirestore(dynamic doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     
     List<ReminderTime> remindersList = [];
@@ -97,7 +98,30 @@ class MedicineBox {
       medicineType: data['medicineType'] ?? 'prescription',
       isConnected: data['isConnected'] ?? false,
       lastUpdated: data['lastUpdated'] != null 
-          ? (data['lastUpdated'] as Timestamp).toDate()
+          ? DateTime.parse(data['lastUpdated'])
+          : null,
+      reminders: remindersList,
+      compartments: data['compartments'],
+    );
+  }
+
+  factory MedicineBox.fromJson(Map<String, dynamic> data) {
+    List<ReminderTime> remindersList = [];
+    if (data['reminders'] != null && data['reminders'] is List) {
+      for (var reminderData in data['reminders']) {
+        remindersList.add(ReminderTime.fromMap(reminderData));
+      }
+    }
+    
+    return MedicineBox(
+      id: data['_id'] ?? data['id'] ?? '',
+      name: data['name'] ?? '',
+      boxNumber: data['boxNumber'] ?? 0,
+      deviceId: data['deviceId'] ?? '',
+      medicineType: data['medicineType'] ?? 'prescription',
+      isConnected: data['isConnected'] ?? false,
+      lastUpdated: data['lastUpdated'] != null 
+          ? DateTime.parse(data['lastUpdated'])
           : null,
       reminders: remindersList,
       compartments: data['compartments'],
@@ -112,9 +136,12 @@ class MedicineBox {
       'deviceId': deviceId,
       'medicineType': medicineType,
       'isConnected': isConnected,
-      'lastUpdated': lastUpdated != null ? Timestamp.fromDate(lastUpdated!) : null,
+      'lastUpdated': lastUpdated?.toIso8601String(),
       'reminders': reminders.map((r) => r.toMap()).toList(),
       'compartments': compartments,
     };
   }
+  
+  // Alias for toJson
+  Map<String, dynamic> toJson() => toFirestore();
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../services/firestore_service.dart';
+import '../services/mongodb_service.dart';
 import '../models/dose_record.dart'; // This is MedicineRecord
 
 class AdherenceReportPage extends StatefulWidget {
@@ -10,7 +10,7 @@ class AdherenceReportPage extends StatefulWidget {
 }
 
 class _AdherenceReportPageState extends State<AdherenceReportPage> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final MongoDBService _mongoDBService = MongoDBService();
 
   DateTime _selectedStartDate = DateTime.now().subtract(Duration(days: 7));
   DateTime _selectedEndDate = DateTime.now();
@@ -130,7 +130,7 @@ class _AdherenceReportPageState extends State<AdherenceReportPage> {
 
   Widget _buildOverallStats() {
     return StreamBuilder<List<MedicineRecord>>(
-      stream: _firestoreService.getRecordsInRange(
+      stream: _mongoDBService.getRecordsInRangeStream(
         _selectedStartDate,
         _selectedEndDate,
       ),
@@ -338,7 +338,7 @@ class _AdherenceReportPageState extends State<AdherenceReportPage> {
             ),
             SizedBox(height: 16),
             StreamBuilder<List<MedicineRecord>>(
-              stream: _firestoreService.getRecordsInRange(
+              stream: _mongoDBService.getRecordsInRangeStream(
                 _selectedStartDate,
                 _selectedEndDate,
               ),
@@ -629,3 +629,4 @@ class _AdherenceReportPageState extends State<AdherenceReportPage> {
     );
   }
 }
+

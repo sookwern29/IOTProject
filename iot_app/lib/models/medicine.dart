@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// Model for medicine information (legacy - may not be used)
 
 class Medicine {
   final String id;
@@ -25,7 +25,8 @@ class Medicine {
     this.isActive = true,
   });
 
-  factory Medicine.fromFirestore(DocumentSnapshot doc) {
+  // Keep fromFirestore for backward compatibility (unused now)
+  factory Medicine.fromFirestore(dynamic doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Medicine(
       id: doc.id,
@@ -35,10 +36,8 @@ class Medicine {
       reminderTimes: List<String>.from(data['reminderTimes'] ?? []),
       dosagePerTime: data['dosagePerTime'] ?? 1,
       notes: data['notes'],
-      startDate: (data['startDate'] as Timestamp).toDate(),
-      endDate: data['endDate'] != null 
-          ? (data['endDate'] as Timestamp).toDate() 
-          : null,
+      startDate: DateTime.parse(data['startDate']),
+      endDate: data['endDate'] != null ? DateTime.parse(data['endDate']) : null,
       isActive: data['isActive'] ?? true,
     );
   }
@@ -51,8 +50,8 @@ class Medicine {
       'reminderTimes': reminderTimes,
       'dosagePerTime': dosagePerTime,
       'notes': notes,
-      'startDate': Timestamp.fromDate(startDate),
-      'endDate': endDate != null ? Timestamp.fromDate(endDate!) : null,
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate?.toIso8601String(),
       'isActive': isActive,
     };
   }

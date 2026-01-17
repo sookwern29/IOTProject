@@ -18,11 +18,15 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _loadUserProfile() async {
-    final user = _authService.currentUser;
-    if (user != null) {
-      final profile = await _authService.getUserProfile(user.uid);
+    final userId = _authService.currentUserId;
+    if (userId != null) {
+      final profile = await _authService.getUserProfile(userId);
       setState(() {
         _userProfile = profile;
+        _isLoading = false;
+      });
+    } else {
+      setState(() {
         _isLoading = false;
       });
     }
@@ -65,8 +69,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _authService.currentUser;
-
     return Scaffold(
       appBar: AppBar(title: Text('Profile')),
       body: _isLoading
@@ -98,7 +100,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             title: Text('Full Name'),
                             subtitle: Text(
                               _userProfile?['fullName'] ??
-                                  user?.displayName ??
+                                  _authService.currentUserName ??
                                   'N/A',
                               style: TextStyle(
                                 fontSize: 16,
@@ -114,7 +116,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             title: Text('Email'),
                             subtitle: Text(
-                              user?.email ?? 'N/A',
+                              _authService.currentUserEmail ?? 'N/A',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -124,18 +126,15 @@ class _ProfilePageState extends State<ProfilePage> {
                           Divider(),
                           ListTile(
                             leading: Icon(
-                              Icons.verified_user_outlined,
+                              Icons.account_circle_outlined,
                               color: Theme.of(context).primaryColor,
                             ),
-                            title: Text('Email Verified'),
+                            title: Text('User ID'),
                             subtitle: Text(
-                              user?.emailVerified == true ? 'Yes' : 'No',
+                              _authService.currentUserId ?? 'N/A',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: user?.emailVerified == true
-                                    ? Colors.green
-                                    : Colors.orange,
                               ),
                             ),
                           ),
@@ -149,42 +148,19 @@ class _ProfilePageState extends State<ProfilePage> {
                   Card(
                     child: Column(
                       children: [
-                        if (user?.emailVerified == false)
-                          ListTile(
-                            leading: Icon(Icons.email, color: Colors.orange),
-                            title: Text('Verify Email'),
-                            trailing: Icon(Icons.arrow_forward_ios, size: 16),
-                            onTap: () async {
-                              try {
-                                await user?.sendEmailVerification();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Verification email sent!'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            },
-                          ),
                         ListTile(
                           leading: Icon(Icons.lock_outline, color: Colors.blue),
                           title: Text('Change Password'),
                           trailing: Icon(Icons.arrow_forward_ios, size: 16),
                           onTap: () async {
-                            if (user?.email != null) {
+                            final email = _authService.currentUserEmail;
+                            if (email != null) {
                               try {
-                                await _authService.resetPassword(user!.email!);
+                                await _authService.resetPassword(email);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Password reset email sent to ${user.email}',
+                                      'Password reset email sent to $email',
                                     ),
                                     backgroundColor: Colors.green,
                                   ),

@@ -1,20 +1,20 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'mongodb_service.dart';
 
 /// Service to communicate with IoT Medicine Box via HTTP
 class DeviceService {
   // Cache device IPs to avoid repeated lookups
   static final Map<String, String> _deviceIpCache = {};
   
-  // Firestore instance
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  // MongoDB service instance
+  final MongoDBService _mongoDBService = MongoDBService();
   
   // Keys for SharedPreferences
   static const String _lastDiscoveredIpKey = 'last_discovered_ip';
   
-  /// Get device IP from Firestore devices collection
+  /// Get device IP from MongoDB devices collection
   /// Retrieves IP address for a specific deviceId from the database
   Future<String?> getDeviceIp(String deviceId) async {
     try {
@@ -23,24 +23,19 @@ class DeviceService {
         return _deviceIpCache[deviceId];
       }
       
-      // Query Firestore devices collection
-      final deviceDoc = await _db.collection('devices').doc(deviceId).get();
+      // Query MongoDB devices collection
+      final ip = await _mongoDBService.getDeviceIp(deviceId);
       
-      if (deviceDoc.exists) {
-        final data = deviceDoc.data();
-        final ip = data?['ip'] as String?;
-        
-        if (ip != null) {
-          // Cache the IP for future use
-          _deviceIpCache[deviceId] = ip;
-          return ip;
-        }
+      if (ip != null) {
+        // Cache the IP for future use
+        _deviceIpCache[deviceId] = ip;
+        return ip;
       }
       
-      print('Device IP not found in Firestore for deviceId: $deviceId');
+      print('Device IP not found in MongoDB for deviceId: $deviceId');
       return null;
     } catch (e) {
-      print('Error getting device IP from Firestore: $e');
+      print('Error getting device IP from MongoDB: $e');
       return null;
     }
   }
@@ -238,18 +233,13 @@ class DeviceService {
     return discoveredDevices;
   }
   
-  /// Save discovered device to Firestore devices collection
+  /// Save discovered device to MongoDB devices collection
   Future<void> _saveDeviceToFirestore(String deviceId, String ip, String name) async {
     try {
-      await _db.collection('devices').doc(deviceId).set({
-        'ip': ip,
-        'name': name,
-        'connectedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      
-      print('Saved device $deviceId ($ip) to Firestore');
+      await _mongoDBService.saveDeviceToFirestore(deviceId, ip, name);
+      print('Saved device $deviceId ($ip) to MongoDB');
     } catch (e) {
-      print('Error saving device to Firestore: $e');
+      print('Error saving device to MongoDB: $e');
     }
   }
 }

@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
+// Model for medicine dose records
 class MedicineRecord {
   final String id;
   final String medicineBoxId;
@@ -35,9 +34,13 @@ class MedicineRecord {
   bool get isTaken => status == 'completed' || takenTime != null;
   bool get isMissed => status == 'missed';
 
-  factory MedicineRecord.fromFirestore(DocumentSnapshot doc) {
+  // Keep fromFirestore for backward compatibility (unused now)
+  factory MedicineRecord.fromFirestore(dynamic doc) {
     final data = doc.data() as Map<String, dynamic>;
+    return MedicineRecord.fromJson({...data, 'id': doc.id});
+  }
 
+  factory MedicineRecord.fromJson(Map<String, dynamic> data) {
     // Normalize status
     String recordStatus = (data['status'] ?? 'upcoming').toString().toLowerCase();
 
@@ -51,7 +54,7 @@ class MedicineRecord {
     }
 
     return MedicineRecord(
-      id: data['id'] ?? doc.id,
+      id: data['_id'] ?? data['id'] ?? '',
       medicineBoxId: data['medicineBoxId'] ?? '',
       medicineName: data['medicineName'] ?? '',
       boxNumber: data['boxNumber'] ?? 0,
@@ -60,13 +63,13 @@ class MedicineRecord {
       reminderTimeId: data['reminderTimeId'] ?? '',
       reminderHour: data['reminderHour'] ?? 0,
       reminderMinute: data['reminderMinute'] ?? 0,
-      scheduledTime: (data['scheduledTime'] as Timestamp).toDate(),
+      scheduledTime: DateTime.parse(data['scheduledTime']),
       takenTime: data['takenTime'] != null
-          ? (data['takenTime'] as Timestamp).toDate()
+          ? DateTime.parse(data['takenTime'])
           : null,
       status: recordStatus,
       createdAt: data['createdAt'] != null
-          ? (data['createdAt'] as Timestamp).toDate()
+          ? DateTime.parse(data['createdAt'])
           : DateTime.now(),
     );
   }
@@ -82,10 +85,10 @@ class MedicineRecord {
       'reminderTimeId': reminderTimeId,
       'reminderHour': reminderHour,
       'reminderMinute': reminderMinute,
-      'scheduledTime': Timestamp.fromDate(scheduledTime),
-      'takenTime': takenTime != null ? Timestamp.fromDate(takenTime!) : null,
+      'scheduledTime': scheduledTime.toIso8601String(),
+      'takenTime': takenTime?.toIso8601String(),
       'status': status,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 

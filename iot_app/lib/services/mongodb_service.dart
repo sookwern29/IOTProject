@@ -1,0 +1,429 @@
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
+import '../models/medicine_box.dart';
+import '../models/dose_record.dart';
+import 'auth_service.dart';
+
+/// MongoDB Service for Medicine Box App
+/// Replaces FirestoreService with MongoDB Atlas backend
+class MongoDBService {
+  static const String _baseUrl = 'https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app';
+  final AuthService _authService = AuthService();
+
+  String get _userId => _authService.currentUserId ?? 'user123';
+  
+  Map<String, String> get _headers {
+    final headers = {'Content-Type': 'application/json'};
+    // Note: Add token to headers when your MongoDB API supports authentication
+    return headers;
+  }
+
+  // ==================== MEDICINE BOX CRUD ====================
+  
+  Future<void> addMedicineBox(MedicineBox box) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/medicineBoxes'),
+      headers: _headers,
+      body: json.encode(box.toJson()),
+    );
+    
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to add medicine box: ${response.body}');
+    }
+  }
+
+  Future<void> updateMedicineBox(MedicineBox box) async {
+    final response = await http.put(
+      Uri.parse('$_baseUrl/medicineBoxes/${box.id}'),
+      headers: _headers,
+      body: json.encode(box.toJson()),
+    );
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update medicine box: ${response.body}');
+    }
+  }
+
+  Future<void> deleteMedicineBox(String boxId) async {
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/medicineBoxes/$boxId'),
+      headers: _headers,
+    );
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete medicine box: ${response.body}');
+    }
+  }
+
+  Stream<List<MedicineBox>> getMedicineBoxes() async* {
+    // Poll periodically since MongoDB doesn't have real-time listeners like Firestore
+    while (true) {
+      try {
+        final response = await http.get(
+          Uri.parse('$_baseUrl/medicineBoxes'),
+          headers: _headers,
+        );
+        
+        if (response.statusCode == 200) {
+          final List<dynamic> data = json.decode(response.body);
+          yield data.map((item) => MedicineBox.fromJson(item)).toList();
+        } else {
+          yield [];
+        }
+      } catch (e) {
+        print('Error fetching medicine boxes: $e');
+        yield [];
+      }
+      
+      await Future.delayed(Duration(seconds: 5)); // Poll every 5 seconds
+    }
+  }
+
+  Future<List<MedicineBox>> getMedicineBoxesList() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/medicineBoxes'),
+        headers: _headers,
+      );
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((item) => MedicineBox.fromJson(item)).toList();
+      }
+    } catch (e) {
+      print('Error fetching medicine boxes: $e');
+    }
+    return [];
+  }
+
+  Future<MedicineBox?> getMedicineBox(String boxId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/medicineBoxes/$boxId'),
+        headers: _headers,
+      );
+      
+      if (response.statusCode == 200) {
+        return MedicineBox.fromJson(json.decode(response.body));
+      }
+    } catch (e) {
+      print('Error fetching medicine box: $e');
+    }
+    return null;
+  }
+
+  Future<MedicineBox?> getMedicineBoxByNumber(int boxNumber) async {
+    try {
+      final boxes = await getMedicineBoxesList();
+      return boxes.firstWhere(
+        (box) => box.boxNumber == boxNumber,
+        orElse: () => throw Exception('Box not found'),
+      );
+    } catch (e) {
+      print('Error finding medicine box by number: $e');
+      return null;
+    }
+  }
+
+  Future<void> updateAllReminderStatuses() async {
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/updateReminderStatuses'),
+        headers: _headers,
+      );
+    } catch (e) {
+      print('Error updating reminder statuses: $e');
+    }
+  }
+
+  // ==================== MEDICINE RECORDS CRUD ====================
+  
+  Future<void> createRecord(MedicineRecord record) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/createRecord'),
+      headers: _headers,
+      body: json.encode({
+        'recordId': record.id,
+        'deviceId': record.deviceId,
+        'boxNumber': record.boxNumber,
+        'medicineName': record.medicineName,
+        'medicineType': record.medicineType,
+        'medicineBoxId': record.medicineBoxId,
+        'scheduledTime': record.scheduledTime.toIso8601String(),
+        'status': record.status,
+        'userId': _userId,
+      }),
+    );
+    
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to create record: ${response.body}');
+    }
+  }
+
+  Future<void> updateRecord(MedicineRecord record) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/updateRecord'),
+      headers: _headers,
+      body: json.encode({
+        'recordId': record.id,
+        'status': record.status,
+        'takenTime': record.takenTime?.toIso8601String(),
+      }),
+    );
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update record: ${response.body}');
+    }
+  }
+
+  Future<void> deleteRecord(String recordId) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/deleteRecord'),
+      headers: _headers,
+      body: json.encode({'recordId': recordId}),
+    );
+    
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete record: ${response.body}');
+    }
+  }
+
+  Future<List<MedicineRecord>> getRecords({String? deviceId}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/getRecords'),
+        headers: _headers,
+        body: json.encode({'deviceId': deviceId ?? ''}),
+      );
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((item) => MedicineRecord.fromJson(item)).toList();
+      }
+    } catch (e) {
+      print('Error fetching records: $e');
+    }
+    return [];
+  }
+
+  // ==================== SPECIFIC QUERIES ====================
+  
+  Future<List<MedicineRecord>> getTodayDoses() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/doses/today'),
+        headers: _headers,
+      );
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((item) => MedicineRecord.fromJson(item)).toList();
+      }
+    } catch (e) {
+      print('Error fetching today doses: $e');
+    }
+    return [];
+  }
+
+  Stream<List<MedicineRecord>> getTodayDosesFromBoxes() async* {
+    // Poll for today's doses
+    while (true) {
+      yield await getTodayDoses();
+      await Future.delayed(Duration(seconds: 5));
+    }
+  }
+
+  Future<List<MedicineRecord>> getRecordsInRange(DateTime start, DateTime end) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/getRecordsInRange'),
+        headers: _headers,
+        body: json.encode({
+          'startDate': start.toIso8601String(),
+          'endDate': end.toIso8601String(),
+          'userId': _userId,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return data.map((item) => MedicineRecord.fromJson(item)).toList();
+      }
+    } catch (e) {
+      print('Error fetching records in range: $e');
+    }
+    return [];
+  }
+
+  Stream<List<MedicineRecord>> getRecordsInRangeStream(DateTime start, DateTime end) async* {
+    while (true) {
+      yield await getRecordsInRange(start, end);
+      await Future.delayed(Duration(seconds: 10)); // Less frequent polling for reports
+    }
+  }
+
+  // ==================== RECORD STATUS UPDATES ====================
+  
+  Future<void> markRecordAsTaken(String recordId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/updateRecord'),
+        headers: _headers,
+        body: json.encode({
+          'recordId': recordId,
+          'status': 'completed',
+          'takenTime': DateTime.now().toIso8601String(),
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to mark record as taken');
+      }
+    } catch (e) {
+      print('Error marking record as taken: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> markRecordAsMissed(String recordId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/updateRecord'),
+        headers: _headers,
+        body: json.encode({
+          'recordId': recordId,
+          'status': 'missed',
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to mark record as missed');
+      }
+    } catch (e) {
+      print('Error marking record as missed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> autoCompleteRecordFromDevice(String deviceId, int boxNumber) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/autoCompleteRecord'),
+        headers: _headers,
+        body: json.encode({
+          'deviceId': deviceId,
+          'boxNumber': boxNumber,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        print('Failed to auto-complete record: ${response.body}');
+      }
+    } catch (e) {
+      print('Error auto-completing record: $e');
+    }
+  }
+
+  // ==================== BULK OPERATIONS ====================
+  
+  Future<void> deleteFutureRecordsForReminder(String medicineBoxId, String reminderId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/deleteFutureRecords'),
+        headers: _headers,
+        body: json.encode({
+          'medicineBoxId': medicineBoxId,
+          'reminderId': reminderId,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete future records');
+      }
+    } catch (e) {
+      print('Error deleting future records: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> generateRecordsForReminder(MedicineBox box, ReminderTime reminder) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/generateRecords'),
+        headers: _headers,
+        body: json.encode({
+          'medicineBoxId': box.id,
+          'boxNumber': box.boxNumber,
+          'medicineName': box.name,
+          'medicineType': box.medicineType,
+          'deviceId': box.deviceId,
+          'reminder': {
+            'id': reminder.id,
+            'hour': reminder.hour,
+            'minute': reminder.minute,
+            'daysOfWeek': reminder.daysOfWeek,
+            'isEnabled': reminder.isEnabled,
+          },
+          'userId': _userId,
+        }),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to generate records');
+      }
+    } catch (e) {
+      print('Error generating records: $e');
+      rethrow;
+    }
+  }
+  
+  // Alias method for backward compatibility
+  Future<void> generateRecordsForBox(MedicineBox box) async {
+    for (var reminder in box.reminders) {
+      await generateRecordsForReminder(box, reminder);
+    }
+  }
+
+  // ==================== DEVICE MANAGEMENT ====================
+  
+  Future<void> saveDeviceToFirestore(String deviceId, String ip, String name) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/saveDevice'),
+        headers: _headers,
+        body: json.encode({
+          'deviceId': deviceId,
+          'ip': ip,
+          'name': name,
+          'lastSeen': DateTime.now().toIso8601String(),
+        }),
+      );
+      
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Failed to save device: ${response.body}');
+      }
+    } catch (e) {
+      print('Error saving device: $e');
+      rethrow;
+    }
+  }
+
+  Future<String?> getDeviceIp(String deviceId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/getDevice'),
+        headers: _headers,
+        body: json.encode({'deviceId': deviceId}),
+      );
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['ip'] as String?;
+      }
+    } catch (e) {
+      print('Error fetching device IP: $e');
+    }
+    return null;
+  }
+}

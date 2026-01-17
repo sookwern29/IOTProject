@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'firestore_service.dart';
+import 'mongodb_service.dart';
 
 class MqttService {
   static final MqttService _instance = MqttService._internal();
@@ -10,7 +10,7 @@ class MqttService {
   MqttService._internal();
 
   MqttServerClient? _client;
-  final FirestoreService _firestoreService = FirestoreService();
+  final MongoDBService _mongoDBService = MongoDBService();
   
   // MQTT Configuration
   static const String _broker = '34.19.178.165';
@@ -149,7 +149,7 @@ class MqttService {
       if (taken) {
         // Medicine was taken - find and update the corresponding record
         print('✅ Medicine taken detected - updating record...');
-        await _firestoreService.autoCompleteRecordFromIoT(
+        await _mongoDBService.autoCompleteRecordFromDevice(
           medicineBoxId,
           boxNumber,
         );
@@ -200,3 +200,4 @@ class MqttService {
     _statusController.close();
   }
 }
+

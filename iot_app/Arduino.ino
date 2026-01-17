@@ -10,8 +10,8 @@
 const char* ssid = "Joe97178";
 const char* password = "JW0509SB";
 
-const char* FIREBASE_PROJECT_ID = "smart-medicine-box-482122";
-const char* FIRESTORE_HOST = "https://firestore.googleapis.com";
+const char* API_BASE_URL =
+  "https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app";
 
 // ================= HARDWARE =================
 Servo myServo;
@@ -57,29 +57,15 @@ String extractLogicalKey(const String& docId) {
 // ================= FIRESTORE QUERY =================
 bool fetchMedicineRecords(String& response) {
   HTTPClient http;
-  http.begin(String(FIRESTORE_HOST) +
-    "/v1/projects/" + FIREBASE_PROJECT_ID +
-    "/databases/(default)/documents:runQuery");
+  http.begin(String(API_BASE_URL) + "/getRecords");
   http.addHeader("Content-Type", "application/json");
 
-String query =
-  "{"
-    "\"structuredQuery\":{"
-      "\"from\":[{\"collectionId\":\"medicineRecords\"}],"
-      "\"where\":{"
-        "\"fieldFilter\":{"
-          "\"field\":{\"fieldPath\":\"deviceId\"},"
-          "\"op\":\"EQUAL\","
-          "\"value\":{\"stringValue\":\"" + boxId + "\"}"
-        "}"
-      "}"
-    "}"
-  "}";
+  String payload =
+    "{ \"deviceId\": \"" + boxId + "\" }";
 
-
-  int code = http.POST(query);
+  int code = http.POST(payload);
   if (code != 200) {
-    Serial.println("❌ Firestore query failed");
+    Serial.println("❌ API getRecords failed");
     http.end();
     return false;
   }
@@ -183,48 +169,30 @@ String selectBestRecord(const std::vector<RecordInfo>& records) {
 
 // ================= FIRESTORE UPDATE =================
 void updateRecordToCompleted(const String& recordId) {
-  Serial.println("📝 Updating medicineRecord → COMPLETED");
-  Serial.println("   Target: " + recordId);
-
   HTTPClient http;
-
-  // 🔑 updateMask is REQUIRED
-  String url = String(FIRESTORE_HOST) +
-    "/v1/projects/" + FIREBASE_PROJECT_ID +
-    "/databases/(default)/documents/medicineRecords/" + recordId +
-    "?updateMask.fieldPaths=status&updateMask.fieldPaths=takenTime";
-
-  http.begin(url);
+  http.begin(String(API_BASE_URL) + "/markCompleted");
   http.addHeader("Content-Type", "application/json");
 
-  // 🔑 RFC3339 timestamp
   struct tm timeinfo;
   getLocalTime(&timeinfo);
-
   char timeBuf[30];
   strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
 
   String payload =
     "{"
-      "\"fields\":{"
-        "\"status\":{\"stringValue\":\"completed\"},"
-        "\"takenTime\":{\"timestampValue\":\"" + String(timeBuf) + "\"}"
-      "}"
+      "\"recordId\":\"" + recordId + "\","
+      "\"takenTime\":\"" + String(timeBuf) + "\""
     "}";
 
-  int code = http.PATCH(payload);
+  int code = http.POST(payload);
 
-  if (code == 200) {
-    Serial.println("✅ Update success (Firestore accepted)");
-  } else {
-    Serial.println("❌ Update failed, HTTP code: " + String(code));
-    Serial.println("📤 Payload:");
-    Serial.println(payload);
-  }
+  if (code == 200)
+    Serial.println("✅ Record marked completed");
+  else
+    Serial.println("❌ Update failed");
 
   http.end();
 }
-
 
 // ================= HARDWARE =================
 void openBox() {
@@ -232,21 +200,7 @@ void openBox() {
 
   Serial.println("\n🔓 BOX OPENED");
 
-  String resp;
-  if (!fetchMedicineRecords(resp)) return;
-
-  std::vector<RecordInfo> records;
-  extractRecords(resp, records);
-
-  activeRecordId = selectBestRecord(records);
-
-  if (activeRecordId == "") {
-    Serial.println("✅ No medicine needed now");
-    return;
-  }
-
-  Serial.println("🎯 Selected Record: " + activeRecordId);
-
+  // Open the box physically first
   myServo.write(90);
   isBoxOpen = true;
   digitalWrite(PIN_LED, HIGH);
@@ -254,6 +208,24 @@ void openBox() {
 
   weightAtStart = scale.get_units(20);
   Serial.printf("⚖️ START WEIGHT: %.2fg\n", weightAtStart);
+
+  // Then check for medicine records
+  String resp;
+  if (!fetchMedicineRecords(resp)) {
+    Serial.println("⚠️ Box opened but couldn't fetch records");
+    return;
+  }
+
+  std::vector<RecordInfo> records;
+  extractRecords(resp, records);
+
+  activeRecordId = selectBestRecord(records);
+
+  if (activeRecordId == "") {
+    Serial.println("✅ No medicine needed now (box still open)");
+  } else {
+    Serial.println("🎯 Selected Record: " + activeRecordId);
+  }
 }
 
 void closeBox() {

@@ -3,8 +3,9 @@ import '../services/auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
   final VoidCallback onSwitchToLogin;
+  final VoidCallback? onAuthSuccess;
 
-  RegisterPage({required this.onSwitchToLogin});
+  RegisterPage({required this.onSwitchToLogin, this.onAuthSuccess});
 
   @override
   _RegisterPageState createState() => _RegisterPageState();
@@ -58,7 +59,10 @@ class _RegisterPageState extends State<RegisterPage> {
         fullName: _nameController.text,
       );
 
-      // Navigate to home on success (handled by auth state listener)
+      print('📞 Calling onAuthSuccess callback');
+      // Notify parent that auth was successful
+      widget.onAuthSuccess?.call();
+      print('✅ Callback completed');
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');

@@ -2,10 +2,10 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/dose_record.dart';
 import '../models/medicine_box.dart';
 import 'device_service.dart';
+import 'mongodb_service.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -13,8 +13,8 @@ class NotificationService {
   NotificationService._internal();
 
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
   final DeviceService _deviceService = DeviceService();
+  final MongoDBService _mongoDBService = MongoDBService();
   
   Timer? _notificationCheckTimer;
   final Map<String, DateTime> _lastNotificationTime = {};
@@ -115,11 +115,8 @@ class NotificationService {
       final now = DateTime.now();
       final currentWeekday = now.weekday % 7; // Convert to 0=Sunday, 1=Monday, etc.
       
-      // Get all active medicine boxes from medicineBox collection (source of truth)
-      final boxesSnapshot = await _db.collection('medicineBox').get();
-      final boxes = boxesSnapshot.docs
-          .map((doc) => MedicineBox.fromFirestore(doc))
-          .toList();
+      // Get all active medicine boxes from MongoDB
+      final boxes = await _mongoDBService.getMedicineBoxesList();
       
       print('Checking ${boxes.length} medicine boxes for notifications');
       
@@ -156,22 +153,23 @@ class NotificationService {
             continue;
           }
           
-          // Check if dose is already taken/missed in medicineRecords
-          final recordQuery = await _db
-              .collection('medicineRecords')
-              .where('medicineBoxId', isEqualTo: box.id)
-              .where('scheduledTime', isEqualTo: Timestamp.fromDate(scheduledTime))
-              .limit(1)
-              .get();
+          // Check if dose is already taken/missed in MongoDB
+          final records = await _mongoDBService.getRecords(deviceId: box.deviceId);
+          final matchingRecord = records.where((r) => 
+            r.medicineBoxId == box.id &&
+            r.scheduledTime.year == scheduledTime.year &&
+            r.scheduledTime.month == scheduledTime.month &&
+            r.scheduledTime.day == scheduledTime.day &&
+            r.scheduledTime.hour == scheduledTime.hour &&
+            r.scheduledTime.minute == scheduledTime.minute
+          ).firstOrNull;
           
           // If record exists and is completed/missed, skip notification
-          if (recordQuery.docs.isNotEmpty) {
-            final record = MedicineRecord.fromFirestore(recordQuery.docs.first);
-            if (record.status == 'completed' || record.status == 'missed') {
-              // Clear notification tracking for completed/missed doses
-              _lastNotificationTime.remove(reminderKey);
-              continue;
-            }
+          if (matchingRecord != null && 
+              (matchingRecord.status == 'completed' || matchingRecord.status == 'missed')) {
+            // Clear notification tracking for completed/missed doses
+            _lastNotificationTime.remove(reminderKey);
+            continue;
           }
           
           // Check if dose is overdue and should notify
@@ -303,9 +301,8 @@ class NotificationService {
     for (var dose in doses) {
       try {
         // Get medicine box to find deviceId
-        final boxDoc = await _db.collection('medicineBox').doc(dose.boxId).get();
-        if (boxDoc.exists) {
-          final box = MedicineBox.fromFirestore(boxDoc);
+        final box = await _mongoDBService.getMedicineBox(dose.boxId);
+        if (box != null) {
           print('💡 Blinking LED for Box ${dose.boxNumber} (Device: ${box.deviceId})');
           // Blink LED for 7 minutes (420 blinks = 420 seconds) when reminder notification is sent
           await _deviceService.blinkBoxLED(box.deviceId, dose.boxNumber, times: 420);

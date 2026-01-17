@@ -1,24 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'dart:async';
 import 'pages/today_doses_page.dart';
 import 'pages/medicine_management_page.dart';
 import 'pages/device_scanner_page.dart';
 import 'pages/adherence_report_page.dart';
-import 'pages/mqtt_debug_page.dart';
-import 'pages/mqtt_test_page.dart';
-import 'services/firestore_service.dart';
+import 'pages/auth_page.dart';
+import 'services/mongodb_service.dart';
 import 'services/notification_service.dart';
 import 'services/mqtt_service.dart';
 import 'services/auth_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
 
   // Initialize notification service
   try {
     await NotificationService().initialize();
+    print('✅ Notification service initialized');
   } catch (e) {
     print('Error initializing notifications: $e');
   }
@@ -26,8 +24,40 @@ void main() async {
   runApp(MedicineReminderApp());
 }
 
-class MedicineReminderApp extends StatelessWidget {
+class MedicineReminderApp extends StatefulWidget {
+  @override
+  _MedicineReminderAppState createState() => _MedicineReminderAppState();
+}
+
+class _MedicineReminderAppState extends State<MedicineReminderApp> {
   final AuthService _authService = AuthService();
+  bool _isLoading = true;
+  bool _isAuthenticated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    await Future.delayed(Duration(milliseconds: 100)); // Small delay to ensure initialization
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = _authService.isAuthenticated;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _onAuthChanged() {
+    print('🔄 Auth state changed. isAuthenticated: ${_authService.isAuthenticated}');
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = _authService.isAuthenticated;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,22 +96,11 @@ class MedicineReminderApp extends StatelessWidget {
           unselectedItemColor: Colors.grey,
         ),
       ),
-      home: StreamBuilder(
-        stream: _authService.authStateChanges,
-        builder: (context, snapshot) {
-          // Show loading while checking auth state
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Scaffold(body: Center(child: CircularProgressIndicator()));
-          }
-
-          // Show auth page if not logged in, otherwise show home page
-          if (snapshot.hasData) {
-            return HomePage();
-          } else {
-            return AuthPage();
-          }
-        },
-      ),
+      home: _isLoading
+          ? Scaffold(body: Center(child: CircularProgressIndicator()))
+          : _isAuthenticated
+              ? HomePage()
+              : AuthPage(onAuthSuccess: _onAuthChanged),
     );
   }
 }
@@ -93,7 +112,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
-  final FirestoreService _firestoreService = FirestoreService();
+  final MongoDBService _mongoDBService = MongoDBService();
   final MqttService _mqttService = MqttService();
   Timer? _statusUpdateTimer;
 
@@ -102,8 +121,6 @@ class _HomePageState extends State<HomePage> {
     MedicineManagementPage(),
     DeviceScannerPage(),
     AdherenceReportPage(),
-    MqttDebugPage(),
-    MqttTestPage(),
   ];
 
   @override
@@ -131,7 +148,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _initializeMqtt() async {
     try {
       // Get the first medicine box to use its ID for MQTT subscription
-      final boxes = await _firestoreService.getMedicineBoxes().first;
+      final boxes = await _mongoDBService.getMedicineBoxes().first;
       if (boxes.isNotEmpty) {
         final medicineBoxId = boxes.first.id;
         print('📡 Initializing MQTT with Medicine Box ID: $medicineBoxId');
@@ -146,7 +163,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _updateReminderStatuses() async {
     try {
-      await _firestoreService.updateAllReminderStatuses();
+      await _mongoDBService.updateAllReminderStatuses();
       print('Reminder statuses updated at ${DateTime.now()}');
     } catch (e) {
       print('Error updating reminder statuses: $e');
@@ -183,8 +200,6 @@ class _HomePageState extends State<HomePage> {
             icon: Icon(Icons.assessment),
             label: 'Reports',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.bug_report), label: 'Debug'),
-          BottomNavigationBarItem(icon: Icon(Icons.science), label: 'Test'),
         ],
       ),
     );

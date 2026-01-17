@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/dose_record.dart';
-import '../services/firestore_service.dart';
+import '../services/mongodb_service.dart';
 import '../services/device_service.dart';
 import '../services/mqtt_service.dart';
 
@@ -12,7 +12,7 @@ class TodayDosesPage extends StatefulWidget {
 }
 
 class _TodayDosesPageState extends State<TodayDosesPage> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final MongoDBService _mongoDBService = MongoDBService();
   final DeviceService _deviceService = DeviceService();
   final MqttService _mqttService = MqttService();
   StreamSubscription? _mqttSubscription;
@@ -96,7 +96,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
 
   Future<void> _updateReminderStatuses() async {
     try {
-      await _firestoreService.updateAllReminderStatuses();
+      await _mongoDBService.updateAllReminderStatuses();
     } catch (e) {
       print('Error updating reminder statuses: $e');
     }
@@ -109,7 +109,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
         title: Text('Today\'s Doses'),
       ),
       body: StreamBuilder<List<MedicineRecord>>(
-        stream: _firestoreService.getTodayDosesFromBoxes(),
+        stream: _mongoDBService.getTodayDosesFromBoxes(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -347,7 +347,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
                   ),
                   IconButton(
                     icon: Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
-                    onPressed: () => _markAsTaken(record.id),
+                    onPressed: () => _markAsTaken(record),
                   ),
                   // IconButton(
                   //   icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
@@ -361,7 +361,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
                     children: [
                       IconButton(
                         icon: Icon(Icons.check_circle, color: Color(0xFF66BB6A)),
-                        onPressed: () => _markAsTaken(record.id),
+                        onPressed: () => _markAsTaken(record),
                       ),
                       // IconButton(
                       //   icon: Icon(Icons.cancel, color: Color(0xFFE53935)),
@@ -378,9 +378,9 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     );
   }
 
-  Future<void> _markAsTaken(String recordId) async {
+  Future<void> _markAsTaken(MedicineRecord record) async {
     try {
-      await _firestoreService.markRecordAsTaken(recordId);
+      await _mongoDBService.markRecordAsTaken(record.id);
       
       // Update reminder statuses after marking as taken
       await _updateReminderStatuses();
@@ -395,9 +395,9 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
     }
   }
 
-  Future<void> _markAsMissed(String recordId) async {
+  Future<void> _markAsMissed(MedicineRecord record) async {
     try {
-      await _firestoreService.markRecordAsMissed(recordId);
+      await _mongoDBService.markRecordAsMissed(record.id);
       
       // Update reminder statuses after marking as missed
       await _updateReminderStatuses();
@@ -415,7 +415,7 @@ class _TodayDosesPageState extends State<TodayDosesPage> {
   Future<void> _lightUpBox(int boxNumber) async {
     try {
       // Get the medicine box to find deviceId
-      final box = await _firestoreService.getMedicineBoxByBoxNumber(boxNumber);
+      final box = await _mongoDBService.getMedicineBoxByNumber(boxNumber);
       
       if (box == null) {
         ScaffoldMessenger.of(context).showSnackBar(

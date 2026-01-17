@@ -3,6 +3,10 @@ import 'login_page.dart';
 import 'register_page.dart';
 
 class AuthPage extends StatefulWidget {
+  final VoidCallback? onAuthSuccess;
+
+  const AuthPage({Key? key, this.onAuthSuccess}) : super(key: key);
+
   @override
   _AuthPageState createState() => _AuthPageState();
 }
@@ -22,8 +26,14 @@ class _AuthPageState extends State<AuthPage> {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: _showLogin
-            ? LoginPage(onSwitchToRegister: _toggleView)
-            : RegisterPage(onSwitchToLogin: _toggleView),
+            ? LoginPage(
+                onSwitchToRegister: _toggleView,
+                onAuthSuccess: widget.onAuthSuccess,
+              )
+            : RegisterPage(
+                onSwitchToLogin: _toggleView,
+                onAuthSuccess: widget.onAuthSuccess,
+              ),
       ),
     );
   }

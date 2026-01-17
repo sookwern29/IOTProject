@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/medicine_box.dart';
-import '../services/firestore_service.dart';
+import '../services/mongodb_service.dart';
 import '../services/device_service.dart';
 import 'device_scanner_page.dart';
 
@@ -11,7 +10,7 @@ class MedicineManagementPage extends StatefulWidget {
 }
 
 class _MedicineManagementPageState extends State<MedicineManagementPage> {
-  final FirestoreService _firestoreService = FirestoreService();
+  final MongoDBService _mongoDBService = MongoDBService();
   final DeviceService _deviceService = DeviceService();
 
   @override
@@ -22,7 +21,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
         title: Text('Medicine Management'),
       ),
       body: StreamBuilder<List<MedicineBox>>(
-        stream: _firestoreService.getMedicineBoxes(),
+        stream: _mongoDBService.getMedicineBoxes(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -197,26 +196,8 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
   }
 
   void _showMedicineBoxDialog(BuildContext context, MedicineBox? box) async {
-    // Get the latest device from Firestore devices collection
+    // Device will be selected manually or set later
     String autoDeviceId = '';
-    if (box == null) {
-      try {
-        final devicesSnapshot = await FirebaseFirestore.instance
-            .collection('devices')
-            .orderBy('connectedAt', descending: true)
-            .limit(1)
-            .get();
-        
-        if (devicesSnapshot.docs.isNotEmpty) {
-          autoDeviceId = devicesSnapshot.docs.first.id;
-          print('📦 Auto-detected device: $autoDeviceId');
-        } else {
-          print('⚠️ No devices found in Firestore');
-        }
-      } catch (e) {
-        print('Error fetching device: $e');
-      }
-    }
     
     final _formKey = GlobalKey<FormState>();
     final _nameController = TextEditingController(text: box?.name ?? '');
@@ -440,13 +421,13 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                         _deviceService.setDeviceIp(boxId, _deviceIdController.text);
                         
                         if (box == null) {
-                          await _firestoreService.addMedicineBox(newBox);
+                          await _mongoDBService.addMedicineBox(newBox);
                           // Generate records for all reminders if box has any
                           if (newBox.reminders.isNotEmpty) {
-                            await _firestoreService.generateRecordsForBox(newBox);
+                            await _mongoDBService.generateRecordsForBox(newBox);
                           }
                         } else {
-                          await _firestoreService.updateMedicineBox(newBox);
+                          await _mongoDBService.updateMedicineBox(newBox);
                         }
                         Navigator.pop(context);
                         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -630,9 +611,9 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                       );
                       
                       try {
-                        await _firestoreService.updateMedicineBox(updatedBox);
+                        await _mongoDBService.updateMedicineBox(updatedBox);
                         // Generate records for this reminder
-                        await _firestoreService.generateRecordsForReminder(updatedBox, newReminder);
+                        await _mongoDBService.generateRecordsForReminder(updatedBox, newReminder);
                         
                         Navigator.pop(context);
                         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -825,13 +806,13 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
                       
                       try {
                         // Delete old future records for this reminder
-                        await _firestoreService.deleteFutureRecordsForReminder(box.id, reminder.id);
+                        await _mongoDBService.deleteFutureRecordsForReminder(box.id, reminder.id);
                         
                         // Update the box with new reminder
-                        await _firestoreService.updateMedicineBox(updatedBox);
+                        await _mongoDBService.updateMedicineBox(updatedBox);
                         
                         // Generate new records for updated reminder
-                        await _firestoreService.generateRecordsForReminder(updatedBox, updatedReminder);
+                        await _mongoDBService.generateRecordsForReminder(updatedBox, updatedReminder);
                         
                         Navigator.pop(context);
                         ScaffoldMessenger.of(this.context).showSnackBar(
@@ -887,7 +868,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
     if (confirmed == true) {
       try {
         // Delete future records for this reminder (keeps historical data)
-        await _firestoreService.deleteFutureRecordsForReminder(box.id, reminder.id);
+        await _mongoDBService.deleteFutureRecordsForReminder(box.id, reminder.id);
         
         final updatedReminders = box.reminders.where((r) => r.id != reminder.id).toList();
         
@@ -902,7 +883,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
           reminders: updatedReminders,
         );
         
-        await _firestoreService.updateMedicineBox(updatedBox);
+        await _mongoDBService.updateMedicineBox(updatedBox);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Reminder deleted'), backgroundColor: Color(0xFFFF9800)),
         );
@@ -936,7 +917,7 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
 
     if (confirmed == true) {
       try {
-        await _firestoreService.deleteMedicineBox(box.id);
+        await _mongoDBService.deleteMedicineBox(box.id);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Medicine box deleted'), backgroundColor: Color(0xFFFF9800)),
         );
@@ -948,3 +929,4 @@ class _MedicineManagementPageState extends State<MedicineManagementPage> {
     }
   }
 }
+

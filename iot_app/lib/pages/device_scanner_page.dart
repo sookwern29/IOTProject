@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/device_service.dart';
-import '../services/firestore_service.dart';
+import '../services/mongodb_service.dart';
 import '../models/medicine_box.dart';
 
 class DeviceScannerPage extends StatefulWidget {
@@ -17,7 +17,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
     with SingleTickerProviderStateMixin {
   // WiFi/IP Scanner
   final DeviceService _deviceService = DeviceService();
-  final FirestoreService _firestoreService = FirestoreService();
+  final MongoDBService _MongoDBService = MongoDBService();
   bool _isIPScanning = false;
   List<Map<String, dynamic>> _discoveredDevices = [];
   double _scanProgress = 0;
@@ -522,7 +522,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
     String name,
   ) async {
     try {
-      await _firestoreService.saveDeviceToFirestore(deviceId, ip, name);
+      await _MongoDBService.saveDeviceToFirestore(deviceId, ip, name);
       print('Saved device $deviceId ($ip) to Firestore');
     } catch (e) {
       print('Error saving device to Firestore: $e');
@@ -532,7 +532,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
   /// Automatically link discovered device to all medicine boxes
   Future<void> _autoLinkToAllBoxes(String deviceId, String ip) async {
     try {
-      final boxes = await _firestoreService.getMedicineBoxes().first;
+      final boxes = await _MongoDBService.getMedicineBoxes().first;
 
       for (var box in boxes) {
         // Update each box's deviceId
@@ -548,7 +548,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
           compartments: box.compartments,
         );
 
-        await _firestoreService.updateMedicineBox(updatedBox);
+        await _MongoDBService.updateMedicineBox(updatedBox);
         _deviceService.setDeviceIp(deviceId, ip);
       }
 
@@ -867,7 +867,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
 
   Future<void> _linkToBox(Map<String, dynamic> device) async {
     // Show dialog to select medicine box
-    final boxesStream = _firestoreService.getMedicineBoxes();
+    final boxesStream = _MongoDBService.getMedicineBoxes();
     final boxes = await boxesStream.first;
 
     if (!mounted) return;
@@ -936,7 +936,7 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
         compartments: box.compartments,
       );
 
-      await _firestoreService.updateMedicineBox(updatedBox);
+      await _MongoDBService.updateMedicineBox(updatedBox);
 
       // Also ensure device is saved to Firestore devices collection
       await _saveDeviceToFirestore(
@@ -1066,3 +1066,4 @@ class _DeviceScannerPageState extends State<DeviceScannerPage>
     }
   }
 }
+

@@ -1,66 +1,97 @@
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class AuthService {
-  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  // Singleton pattern
+  static final AuthService _instance = AuthService._internal();
+  factory AuthService() => _instance;
+  AuthService._internal();
 
-  // Get current user
-  User? get currentUser => _firebaseAuth.currentUser;
+  static const String _baseUrl = 'https://smartmed-mongo-api-1007306144996.asia-southeast1.run.app';
+  
+  String? _currentUserId;
+  String? _currentUserEmail;
+  String? _currentUserName;
+  String? _authToken;
 
-  // Auth state stream
-  Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
+  // Get current user ID
+  String? get currentUserId => _currentUserId;
+  String? get currentUserEmail => _currentUserEmail;
+  String? get currentUserName => _currentUserName;
+  String? get authToken => _authToken;
+  bool get isAuthenticated => _authToken != null;
 
   /// Register a new user
-  Future<UserCredential> register({
+  Future<Map<String, dynamic>> register({
     required String email,
     required String password,
     required String fullName,
   }) async {
     try {
-      // Create user account
-      final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email.trim(),
+          'password': password,
+          'fullName': fullName,
+        }),
       );
 
-      // Update display name
-      await userCredential.user?.updateDisplayName(fullName);
-      await userCredential.user?.reload();
-
-      // Create user profile in Firestore
-      await _firestore.collection('users').doc(userCredential.user!.uid).set({
-        'uid': userCredential.user!.uid,
-        'email': email.trim(),
-        'fullName': fullName,
-        'createdAt': Timestamp.now(),
-        'updatedAt': Timestamp.now(),
-      });
-
-      print('✅ User registered successfully: ${userCredential.user?.email}');
-      return userCredential;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = json.decode(response.body);
+        print('📦 Full registration response: $data');
+        
+        _currentUserId = data['userId'] ?? data['uid'] ?? data['_id'] ?? data['id'];
+        _currentUserEmail = email.trim();
+        _currentUserName = fullName;
+        _authToken = data['token'] ?? data['authToken'] ?? 'registered';
+        
+        print('✅ User registered successfully: $email');
+        print('🔑 Auth token stored: ${_authToken != null}');
+        print('👤 User ID: $_currentUserId');
+        return data;
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['message'] ?? 'Registration failed');
+      }
     } catch (e) {
       throw Exception('Registration failed: $e');
     }
   }
 
   /// Login user
-  Future<UserCredential> login({
+  Future<Map<String, dynamic>> login({
     required String email,
     required String password,
   }) async {
     try {
-      final userCredential = await _firebaseAuth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email.trim(),
+          'password': password,
+        }),
       );
 
-      print('✅ User logged in: ${userCredential.user?.email}');
-      return userCredential;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('📦 Full login response: $data');
+        
+        _currentUserId = data['userId'] ?? data['uid'] ?? data['_id'] ?? data['id'];
+        _currentUserEmail = email.trim();
+        _currentUserName = data['fullName'] ?? data['name'];
+        _authToken = data['token'] ?? data['authToken'] ?? 'logged_in';
+        
+        print('✅ User logged in: $email');
+        print('🔑 Auth token stored: ${_authToken != null}');
+        print('👤 User ID: $_currentUserId');
+        return data;
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['message'] ?? 'Login failed');
+      }
     } catch (e) {
       throw Exception('Login failed: $e');
     }
@@ -69,7 +100,21 @@ class AuthService {
   /// Logout user
   Future<void> logout() async {
     try {
-      await _firebaseAuth.signOut();
+      if (_authToken != null) {
+        await http.post(
+          Uri.parse('$_baseUrl/auth/logout'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_authToken',
+          },
+        );
+      }
+      
+      _currentUserId = null;
+      _currentUserEmail = null;
+      _currentUserName = null;
+      _authToken = null;
+      
       print('✅ User logged out');
     } catch (e) {
       throw Exception('Logout failed: $e');
@@ -79,45 +124,42 @@ class AuthService {
   /// Reset password
   Future<void> resetPassword(String email) async {
     try {
-      await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
-      print('✅ Password reset email sent to: $email');
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/resetPassword'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email.trim()}),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Password reset email sent to: $email');
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['message'] ?? 'Password reset failed');
+      }
     } catch (e) {
       throw Exception('Password reset failed: $e');
     }
   }
 
-  /// Get user profile from Firestore
+  /// Get user profile from MongoDB
   Future<Map<String, dynamic>?> getUserProfile(String uid) async {
     try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      return doc.data();
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/$uid'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
     } catch (e) {
       print('Error fetching user profile: $e');
       return null;
     }
   }
 
-  /// Handle Firebase Auth exceptions
-  String _handleAuthException(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'weak-password':
-        return 'Password is too weak. Use at least 6 characters.';
-      case 'email-already-in-use':
-        return 'Email is already registered.';
-      case 'invalid-email':
-        return 'Invalid email address.';
-      case 'user-not-found':
-        return 'User not found. Please register first.';
-      case 'wrong-password':
-        return 'Incorrect password.';
-      case 'too-many-requests':
-        return 'Too many login attempts. Try again later.';
-      case 'operation-not-allowed':
-        return 'Email/password sign in is not enabled.';
-      default:
-        return e.message ?? 'Authentication error occurred.';
-    }
-  }
 }
