@@ -244,15 +244,34 @@ class MongoDBService {
 
     List<MedicineRecord> apiDoses = [];
 
+    // Get user's local date (midnight in user's timezone)
+    final userDate = DateTime(now.year, now.month, now.day);
+    print('📤 Sending user date to backend: ${userDate.toIso8601String()}');
+
     try {
-      final response = await http.get(
+      final response = await http.post(
         Uri.parse('$_baseUrl/doses/today'),
         headers: _headers,
+        body: json.encode({'userDate': userDate.toIso8601String()}),
       );
 
       print('📥 /doses/today response: ${response.statusCode}');
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final responseData = json.decode(response.body);
+
+        // Handle new response format with debug info
+        final List<dynamic> data;
+        if (responseData is Map && responseData.containsKey('records')) {
+          data = responseData['records'];
+          // Print debug info from backend
+          if (responseData.containsKey('debug')) {
+            print('🐛 Backend debug: ${responseData['debug']}');
+          }
+        } else {
+          // Old format - just array
+          data = responseData;
+        }
+
         apiDoses = data.map((item) => MedicineRecord.fromJson(item)).toList();
         print('✅ API returned ${apiDoses.length} doses');
 
